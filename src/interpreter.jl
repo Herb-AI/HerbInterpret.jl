@@ -1,13 +1,49 @@
 """
+Runs the interpreter on all examples with the given input table and expression.
+Returns a list of true/false values indicating if the expression satisfies the corresponding example.
+"""
+function evaluate_all_examples(tab::SymbolTable, expr::Any, examples::Vector{Data.Example})::Vector{Bool}
+    outcomes = Vector{Bool}()
+    for example ∈ filter(e -> e isa IOExample, examples)
+        push!(outcomes, example.out == evaluate_with_input(tab, expr, example.in))
+    end
+    return outcomes
+end
+
+
+"""
+Evaluates all examples and returns true iff all examples pass.
+Shortcircuits as soon as an example is found for which the program doesn't work. 
+"""
+function evaluate_examples(tab::SymbolTable, expr::Any, examples::Vector{Data.Example})::Bool
+    for example ∈ filter(e -> e isa IOExample, examples)
+        if example.out ≠ evaluate_with_input(tab, expr, example.in)
+            return false
+        end
+    end
+    return true
+end
+
+
+"""
+Interprets an expression or symbol with the given symboltable and the input.
+"""
+function evaluate_with_input(tab::SymbolTable, expr::Any, input::Dict)
+    # Add input variable values
+    symbols = merge(tab, input)
+    return interpret(symbols, expr)
+end
+
+
+"""
 Evaluates an expression without compiling it.
-Uses AST and symbol lookups. Only supports :call and :(=) 
+Uses AST and symbol lookups. Only supports :call and :(=)
 expressions at the moment.
 Example:
 tab = SymbolTable(:f => f, :x => x)
 ex = :(f(x))
 interpret(tab, ex)
 """
-
 interpret(tab::Grammars.SymbolTable, x::Any) = x
 interpret(tab::SymbolTable, s::Symbol) = tab[s]
 
