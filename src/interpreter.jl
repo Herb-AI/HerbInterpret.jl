@@ -36,6 +36,14 @@ end
 
 
 """
+Executes a given expression on a set of inputs and returns the respective outputs.
+"""
+function execute_program_on_examples(tab::Symboltable, expr::Any, example_inputs::Vector{Any})::Vector{Any}
+    return [evaluate_with_input(tab, expr, example) for example in example_inputs]
+end
+
+
+"""
 Evaluates an expression without compiling it.
 Uses AST and symbol lookups. Only supports :call and :(=)
 expressions at the moment.
