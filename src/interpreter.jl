@@ -2,7 +2,7 @@
 Runs the interpreter on all examples with the given input table and expression.
 Returns a list of true/false values indicating if the expression satisfies the corresponding example.
 """
-function evaluate_all_examples(tab::SymbolTable, expr::Any, examples::Vector{Data.Example})::Vector{Bool}
+function test_all_examples(tab::SymbolTable, expr::Any, examples::Vector{Data.Example})::Vector{Bool}
     outcomes = Vector{Bool}()
     for example ∈ filter(e -> e isa IOExample, examples)
         push!(outcomes, example.out == evaluate_with_input(tab, expr, example.in))
@@ -15,7 +15,7 @@ end
 Evaluates all examples and returns true iff all examples pass.
 Shortcircuits as soon as an example is found for which the program doesn't work. 
 """
-function evaluate_examples(tab::SymbolTable, expr::Any, examples::Vector{Data.Example})::Bool
+function test_examples(tab::SymbolTable, expr::Any, examples::Vector{Data.Example})::Bool
     for example ∈ filter(e -> e isa IOExample, examples)
         if example.out ≠ evaluate_with_input(tab, expr, example.in)
             return false
@@ -28,7 +28,7 @@ end
 """
 Interprets an expression or symbol with the given symboltable and the input.
 """
-function evaluate_with_input(tab::SymbolTable, expr::Any, input::Dict)
+function test_with_input(tab::SymbolTable, expr::Any, input::Dict)
     # Add input variable values
     symbols = merge(tab, input)
     return interpret(symbols, expr)
@@ -38,7 +38,7 @@ end
 """
 Executes a given expression on a set of inputs and returns the respective outputs.
 """
-function execute_program_on_examples(tab::Symboltable, expr::Any, example_inputs::Vector{Any})::Vector{Any}
+function execute_on_examples(tab::Symboltable, expr::Any, example_inputs::Vector{Dict{Symbol, Any}})::Vector{Any}
     return [evaluate_with_input(tab, expr, example) for example in example_inputs]
 end
 

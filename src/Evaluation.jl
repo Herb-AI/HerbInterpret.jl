@@ -8,10 +8,10 @@ include("interpreter.jl")
 export 
     SymbolTable,
     interpret,
-    evaluate_examples
-    evaluate_all_examples,
-    evaluate_with_input,
-    execute_program_on_examples
+    test_examples
+    test_all_examples,
+    test_with_input,
+    execute_on_examples
 
 
 end # module
