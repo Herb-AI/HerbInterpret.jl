@@ -38,7 +38,7 @@ end
 """
 Executes a given expression on a set of inputs and returns the respective outputs.
 """
-function execute_on_examples(tab::Symboltable, expr::Any, example_inputs::Vector{Dict{Symbol, Any}})::Vector{Any}
+function execute_on_examples(tab::SymbolTable, expr::Any, example_inputs::Vector{Dict{Symbol, Any}})::Vector{Any}
     return [evaluate_with_input(tab, expr, example) for example in example_inputs]
 end
 
