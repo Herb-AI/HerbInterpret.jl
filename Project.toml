@@ -1,4 +1,4 @@
-name = "Evaluation"
+name = "HerbEvaluation"
 uuid = "eb1bf938-813d-4942-ac0f-b4657a683e76"
 authors = ["Jaap de Jong <jaapdejong15@gmail.com>"]
 version = "0.1.0"
