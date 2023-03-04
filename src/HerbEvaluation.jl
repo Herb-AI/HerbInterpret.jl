@@ -1,7 +1,7 @@
-module Evaluation
+module HerbEvaluation
 
-using ..Data
-using ..Grammars
+using ..HerbData
+using ..HerbGrammar
 
 include("interpreter.jl")
 
@@ -14,4 +14,4 @@ export
     execute_on_examples
 
 
-end # module
+end # module HerbEvaluation

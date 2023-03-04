@@ -2,10 +2,10 @@
 Runs the interpreter on all examples with the given input table and expression.
 Returns a list of true/false values indicating if the expression satisfies the corresponding example.
 """
-function test_all_examples(tab::SymbolTable, expr::Any, examples::Vector{Data.Example})::Vector{Bool}
+function test_all_examples(tab::SymbolTable, expr::Any, examples::Vector{Example})::Vector{Bool}
     outcomes = Vector{Bool}()
     for example ∈ filter(e -> e isa IOExample, examples)
-        push!(outcomes, example.out == evaluate_with_input(tab, expr, example.in))
+        push!(outcomes, example.out == test_with_input(tab, expr, example.in))
     end
     return outcomes
 end
@@ -15,9 +15,9 @@ end
 Evaluates all examples and returns true iff all examples pass.
 Shortcircuits as soon as an example is found for which the program doesn't work. 
 """
-function test_examples(tab::SymbolTable, expr::Any, examples::Vector{Data.Example})::Bool
+function test_examples(tab::SymbolTable, expr::Any, examples::Vector{Example})::Bool
     for example ∈ filter(e -> e isa IOExample, examples)
-        if example.out ≠ evaluate_with_input(tab, expr, example.in)
+        if example.out ≠ test_with_input(tab, expr, example.in)
             return false
         end
     end
@@ -39,7 +39,7 @@ end
 Executes a given expression on a set of inputs and returns the respective outputs.
 """
 function execute_on_examples(tab::SymbolTable, expr::Any, example_inputs::Vector{Dict{Symbol, Any}})::Vector{Any}
-    return [evaluate_with_input(tab, expr, example) for example in example_inputs]
+    return [test_with_input(tab, expr, example) for example in example_inputs]
 end
 
 
@@ -52,7 +52,7 @@ tab = SymbolTable(:f => f, :x => x)
 ex = :(f(x))
 interpret(tab, ex)
 """
-interpret(tab::Grammars.SymbolTable, x::Any) = x
+interpret(tab::SymbolTable, x::Any) = x
 interpret(tab::SymbolTable, s::Symbol) = tab[s]
 
 function interpret(tab::SymbolTable, ex::Expr)
