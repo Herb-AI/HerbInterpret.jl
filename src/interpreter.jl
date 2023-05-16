@@ -1,6 +1,8 @@
 """
 Runs the interpreter on all examples with the given input table and expression.
 Returns a list of true/false values indicating if the expression satisfies the corresponding example.
+WARNING: This function throws exceptions that are caused in the given expression.
+These exceptions have to be handled by the caller of this function.
 """
 function test_all_examples(tab::SymbolTable, expr::Any, examples::Vector{Example})::Vector{Bool}
     outcomes = Vector{Bool}()
@@ -14,10 +16,16 @@ end
 """
 Evaluates all examples and returns true iff all examples pass.
 Shortcircuits as soon as an example is found for which the program doesn't work. 
+Returns false if one of the examples produces an error.
 """
 function test_examples(tab::SymbolTable, expr::Any, examples::Vector{Example})::Bool
     for example ∈ filter(e -> e isa IOExample, examples)
-        if example.out ≠ test_with_input(tab, expr, example.in)
+        try 
+            output = test_with_input(tab, expr, example.in)
+            if output ≠ test_with_input(tab, expr, example.in)
+                return false
+            end
+        catch
             return false
         end
     end
@@ -27,6 +35,8 @@ end
 
 """
 Interprets an expression or symbol with the given symboltable and the input.
+WARNING: This function throws exceptions that are caused in the given expression.
+These exceptions have to be handled by the caller of this function.
 """
 function test_with_input(tab::SymbolTable, expr::Any, input::Dict)
     # Add input variable values
@@ -37,6 +47,8 @@ end
 
 """
 Executes a given expression on a set of inputs and returns the respective outputs.
+WARNING: This function throws exceptions that are caused in the given expression.
+These exceptions have to be handled by the caller of this function.
 """
 function execute_on_examples(tab::SymbolTable, expr::Any, example_inputs::Vector{Dict{Symbol, Any}})::Vector{Any}
     return [test_with_input(tab, expr, example) for example in example_inputs]
@@ -51,6 +63,8 @@ Example:
 tab = SymbolTable(:f => f, :x => x)
 ex = :(f(x))
 interpret(tab, ex)
+WARNING: This function throws exceptions that are caused in the given expression.
+These exceptions have to be handled by the caller of this function.
 """
 interpret(tab::SymbolTable, x::Any) = x
 interpret(tab::SymbolTable, s::Symbol) = tab[s]
