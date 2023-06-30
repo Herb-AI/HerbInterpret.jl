@@ -6,7 +6,7 @@ The symbol table defines everything (functions, symbols) that are not input vari
 Returns a list of true/false values indicating if the expression satisfies the corresponding example.
 """
 function test_all_examples(tab::SymbolTable, expr::Any, examples::Vector{Example})::Vector{Bool}
-    outcomes = Vector{Bool}()
+    outcomes = Vector{Bool}(undef, length(examples))
     for example ∈ filter(e -> e isa IOExample, examples)
         push!(outcomes, example.out == test_with_input(tab, expr, example.in))
     end
