@@ -1,7 +1,8 @@
 """
-test_all_examples(tab::SymbolTable, expr::Any, examples::Vector{Example})::Vector{Bool}
+    test_all_examples(tab::SymbolTable, expr::Any, examples::Vector{Example})::Vector{Bool}
 
-Runs the interpreter on all examples with the given input table and expression.
+Runs the interpreter on all examples with the given input table and expression. 
+The symbol table defines everything (functions, symbols) that are not input variables to the program to be synthesised.
 Returns a list of true/false values indicating if the expression satisfies the corresponding example.
 """
 function test_all_examples(tab::SymbolTable, expr::Any, examples::Vector{Example})::Vector{Bool}
@@ -14,6 +15,8 @@ end
 
 
 """
+    test_examples(tab::SymbolTable, expr::Any, examples::Vector{Example})::Bool
+
 Evaluates all examples and returns true iff all examples pass.
 Shortcircuits as soon as an example is found for which the program doesn't work. 
 """
@@ -28,6 +31,8 @@ end
 
 
 """
+    test_with_input(tab::SymbolTable, expr::Any, input::Dict)
+
 Interprets an expression or symbol with the given symboltable and the input.
 """
 function test_with_input(tab::SymbolTable, expr::Any, input::Dict)
@@ -38,6 +43,8 @@ end
 
 
 """
+    execute_on_examples(tab::SymbolTable, expr::Any, example_inputs::Vector{Dict{Symbol, Any}})::Vector{Any}
+
 Executes a given expression on a set of inputs and returns the respective outputs.
 """
 function execute_on_examples(tab::SymbolTable, expr::Any, example_inputs::Vector{Dict{Symbol, Any}})::Vector{Any}
@@ -49,10 +56,13 @@ end
 Evaluates an expression without compiling it.
 Uses AST and symbol lookups. Only supports :call and :(=)
 expressions at the moment.
-Example:
+
+### Example usage 
+```
 tab = SymbolTable(:f => f, :x => x)
 ex = :(f(x))
 interpret(tab, ex)
+```
 """
 interpret(tab::SymbolTable, x::Any) = x
 interpret(tab::SymbolTable, s::Symbol) = tab[s]
