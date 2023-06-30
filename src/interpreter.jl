@@ -1,9 +1,11 @@
 """
+test_all_examples(tab::SymbolTable, expr::Any, examples::Vector{Example})::Vector{Bool}
+
 Runs the interpreter on all examples with the given input table and expression.
 Returns a list of true/false values indicating if the expression satisfies the corresponding example.
 """
 function test_all_examples(tab::SymbolTable, expr::Any, examples::Vector{Example})::Vector{Bool}
-    outcomes = Vector{Bool}()
+    outcomes = Vector{Bool}(undef, length(examples))
     for example ∈ filter(e -> e isa IOExample, examples)
         push!(outcomes, example.out == test_with_input(tab, expr, example.in))
     end
