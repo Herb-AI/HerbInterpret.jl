@@ -53,6 +53,8 @@ end
 
 
 """
+    interpret(tab::SymbolTable, ex::Expr)
+
 Evaluates an expression without compiling it.
 Uses AST and symbol lookups. Only supports :call and :(=)
 expressions at the moment.
