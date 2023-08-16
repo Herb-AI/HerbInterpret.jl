@@ -1,8 +1,8 @@
 module HerbEvaluation
 
-using ..HerbCore
-using ..HerbData
-using ..HerbGrammar
+using HerbCore
+using HerbData
+using HerbGrammar
 
 include("interpreter.jl")
 
