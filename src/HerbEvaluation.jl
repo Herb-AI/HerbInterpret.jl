@@ -1,5 +1,6 @@
 module HerbEvaluation
 
+using HerbCore
 using HerbData
 using HerbGrammar
 
