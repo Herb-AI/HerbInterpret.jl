@@ -1,11 +1,14 @@
 """
-Runs the interpreter on all examples with the given input table and expression.
+    test_all_examples(tab::SymbolTable, expr::Any, examples::Vector{Example})::Vector{Bool}
+
+Runs the interpreter on all examples with the given input table and expression. 
+The symbol table defines everything (functions, symbols) that are not input variables to the program to be synthesised.
 Returns a list of true/false values indicating if the expression satisfies the corresponding example.
 WARNING: This function throws exceptions that are caused in the given expression.
 These exceptions have to be handled by the caller of this function.
 """
 function test_all_examples(tab::SymbolTable, expr::Any, examples::Vector{Example})::Vector{Bool}
-    outcomes = Vector{Bool}()
+    outcomes = Vector{Bool}(undef, length(examples))
     for example ∈ filter(e -> e isa IOExample, examples)
         push!(outcomes, example.out == test_with_input(tab, expr, example.in))
     end
@@ -14,6 +17,8 @@ end
 
 
 """
+    test_examples(tab::SymbolTable, expr::Any, examples::Vector{Example})::Bool
+
 Evaluates all examples and returns true iff all examples pass.
 Shortcircuits as soon as an example is found for which the program doesn't work. 
 Returns false if one of the examples produces an error.
@@ -34,6 +39,8 @@ end
 
 
 """
+    test_with_input(tab::SymbolTable, expr::Any, input::Dict)
+
 Interprets an expression or symbol with the given symboltable and the input.
 WARNING: This function throws exceptions that are caused in the given expression.
 These exceptions have to be handled by the caller of this function.
@@ -46,6 +53,8 @@ end
 
 
 """
+    execute_on_examples(tab::SymbolTable, expr::Any, example_inputs::Vector{Dict{Symbol, Any}})::Vector{Any}
+
 Executes a given expression on a set of inputs and returns the respective outputs.
 WARNING: This function throws exceptions that are caused in the given expression.
 These exceptions have to be handled by the caller of this function.
@@ -56,13 +65,19 @@ end
 
 
 """
+    interpret(tab::SymbolTable, ex::Expr)
+
 Evaluates an expression without compiling it.
 Uses AST and symbol lookups. Only supports :call and :(=)
 expressions at the moment.
-Example:
+
+Example usage:
+```
 tab = SymbolTable(:f => f, :x => x)
 ex = :(f(x))
 interpret(tab, ex)
+```
+
 WARNING: This function throws exceptions that are caused in the given expression.
 These exceptions have to be handled by the caller of this function.
 """
