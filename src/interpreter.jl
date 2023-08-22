@@ -65,11 +65,11 @@ end
 
 
 """
-    evaluate_on_program(program::RuleNode, examples::Vector{<:Example}, grammar::Grammar, evaluation_function::Function)
+    evaluate_program(program::RuleNode, examples::Vector{<:Example}, grammar::Grammar, evaluation_function::Function)
 
 Runs a program on the examples and returns tuples of actual desired output and the program's output
 """
-function evaluate_on_program(program::RuleNode, examples::Vector{<:Example}, grammar::Grammar, evaluation_function::Function)
+function evaluate_program(program::RuleNode, examples::Vector{<:Example}, grammar::Grammar, evaluation_function::Function)
     results = Tuple{<:Number,<:Number}[]
     expression = rulenode2expr(program, grammar)
     symbol_table = SymbolTable(grammar)
