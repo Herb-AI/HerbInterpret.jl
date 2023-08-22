@@ -65,6 +65,23 @@ end
 
 
 """
+    evaluate_on_program(program::RuleNode, examples::Vector{<:Example}, grammar::Grammar, evaluation_function::Function)
+
+Runs a program on the examples and returns tuples of actual desired output and the program's output
+"""
+function evaluate_on_program(program::RuleNode, examples::Vector{<:Example}, grammar::Grammar, evaluation_function::Function)
+    results = Tuple{<:Number,<:Number}[]
+    expression = rulenode2expr(program, grammar)
+    symbol_table = SymbolTable(grammar)
+    for example ∈ filter(e -> e isa IOExample, examples)
+        outcome = evaluation_function(symbol_table, expression, example.in)
+        push!(results, (example.out, outcome))
+    end
+    return results
+end
+
+
+"""
     interpret(tab::SymbolTable, ex::Expr)
 
 Evaluates an expression without compiling it.
