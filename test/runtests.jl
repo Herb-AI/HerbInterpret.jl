@@ -1,7 +1,7 @@
-using HerbEvaluation
+using HerbInterpret
 using Test
 
-@testset "HerbEvaluation.jl" begin
+@testset "HerbInterpret.jl" begin
     # Write your tests here. 
     @testset "Simple test_with_input (x + 2)" begin
         tab = Dict{Symbol,Any}(:+ => +)

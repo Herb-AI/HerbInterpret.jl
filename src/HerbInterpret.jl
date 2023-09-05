@@ -1,4 +1,4 @@
-module HerbEvaluation
+module HerbInterpret
 
 using HerbCore
 using HerbData
@@ -15,4 +15,4 @@ export
     execute_on_examples
 
 
-end # module HerbEvaluation
+end # module HerbInterpret
