@@ -159,6 +159,21 @@ function interpret(tab::SymbolTable, ex::Expr)
         else
             return interpret(tab, args[3])
         end
+    elseif ex.head == :while
+        max_iterations = 1000
+        result = nothing
+
+        for i in 1:max_iterations # limit iterations to 1000
+            if !interpret(tab, ex.args[1])
+                break
+            end
+            if i == max_iterations
+                error("Exceeded maximum number of iterations in while-loop.")
+            end
+            
+            result = interpret(tab, ex.args[2])
+        end
+        return result
     else
         error("Expression type not supported")
     end
