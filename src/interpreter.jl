@@ -1,5 +1,6 @@
+using Base: depwarn
 """
-    test_all_examples(tab::SymbolTable, expr::Any, examples::Vector{Example})::Vector{Bool}
+    test_all_examples(tab::SymbolTable, expr::Any, examples::Vector{IOExample})::Vector{Bool}
 
 Runs the interpreter on all examples with the given input table and expression. 
 The symbol table defines everything (functions, symbols) that are not input variables to the program to be synthesised.
@@ -7,27 +8,32 @@ Returns a list of true/false values indicating if the expression satisfies the c
 WARNING: This function throws exceptions that are caused in the given expression.
 These exceptions have to be handled by the caller of this function.
 """
-function test_all_examples(tab::SymbolTable, expr::Any, examples::Vector{Example})::Vector{Bool}
+function test_all_examples(tab::SymbolTable, expr::Any, examples::Vector{IOExample})::Vector{Bool}
+    depwarn("`test_all_examples` is deprecated and should no longer be used.", :test_all_examples)
+    throw(ErrorException("`test_all_examples` has been deprecated and should not be used."))
+
     outcomes = Vector{Bool}(undef, length(examples))
     for example ∈ filter(e -> e isa IOExample, examples)
-        push!(outcomes, example.out == test_with_input(tab, expr, example.in))
+        push!(outcomes, example.out == execute_on_input(tab, expr, example.in))
     end
     return outcomes
 end
 
-
 """
-    test_examples(tab::SymbolTable, expr::Any, examples::Vector{Example})::Bool
+    test_examples(tab::SymbolTable, expr::Any, examples::Vector{IOExample})::Bool
 
 Evaluates all examples and returns true iff all examples pass.
 Shortcircuits as soon as an example is found for which the program doesn't work. 
 Returns false if one of the examples produces an error.
 """
-function test_examples(tab::SymbolTable, expr::Any, examples::Vector{Example})::Bool
+function test_examples(tab::SymbolTable, expr::Any, examples::Vector{IOExample})::Bool
+    depwarn("`test_examples` is deprecated and should no longer be used.", :test_examples)
+    throw(ErrorException("`test_examples` has been deprecated and should not be used."))
+
     for example ∈ filter(e -> e isa IOExample, examples)
         try 
-            output = test_with_input(tab, expr, example.in)
-            if output ≠ test_with_input(tab, expr, example.in)
+            output = execute_on_input(tab, expr, example.in)
+            if output ≠ execute_on_input(tab, expr, example.in)
                 return false
             end
         catch
@@ -39,13 +45,13 @@ end
 
 
 """
-    test_with_input(tab::SymbolTable, expr::Any, input::Dict)
+    exec_on_input(tab::SymbolTable, expr::Any, input::Dict)
 
 Interprets an expression or symbol with the given symboltable and the input.
 WARNING: This function throws exceptions that are caused in the given expression.
 These exceptions have to be handled by the caller of this function.
 """
-function test_with_input(tab::SymbolTable, expr::Any, input::Dict)
+function execute_on_input(tab::SymbolTable, expr::Any, input::Dict)::Any
     # Add input variable values
     symbols = merge(tab, input)
     return interpret(symbols, expr)
@@ -53,23 +59,26 @@ end
 
 
 """
-    execute_on_examples(tab::SymbolTable, expr::Any, example_inputs::Vector{Dict{Symbol, Any}})::Vector{Any}
+    execute_on_examples(tab::SymbolTable, expr::Any, inputs::Vector{Dict{Symbol, Any}})::Vector{Any}
 
 Executes a given expression on a set of inputs and returns the respective outputs.
 WARNING: This function throws exceptions that are caused in the given expression.
 These exceptions have to be handled by the caller of this function.
 """
-function execute_on_examples(tab::SymbolTable, expr::Any, example_inputs::Vector{Dict{Symbol, Any}})::Vector{Any}
-    return [test_with_input(tab, expr, example) for example in example_inputs]
+function execute_on_input(tab::SymbolTable, expr::Any, input::Vector{Dict{Symbol, Any}})::Vector{Any}
+    return [execute_on_input(tab, expr, example) for example in example_inputs]
 end
 
 
 """
-    evaluate_program(program::RuleNode, examples::Vector{<:Example}, grammar::Grammar, evaluation_function::Function)
+    evaluate_program(program::RuleNode, examples::Vector{<:IOExample}, grammar::Grammar, evaluation_function::Function)
 
 Runs a program on the examples and returns tuples of actual desired output and the program's output
 """
-function evaluate_program(program::RuleNode, examples::Vector{<:Example}, grammar::Grammar, evaluation_function::Function)
+function evaluate_program(program::RuleNode, examples::Vector{<:IOExample}, grammar::Grammar, evaluation_function::Function)
+    depwarn("`evaluate_program` is deprecated and should no longer be used. Please use HerbSearch.evaluate instead.", :evaluate_program)
+    throw(ErrorException("`evaluate_program` has been deprecated and should not be used."))
+
     results = Tuple{<:Number,<:Number}[]
     expression = rulenode2expr(program, grammar)
     symbol_table = SymbolTable(grammar)
