@@ -45,13 +45,13 @@ end
 
 
 """
-    exec_on_input(tab::SymbolTable, expr::Any, input::Dict)
+    execute_on_input(tab::SymbolTable, expr::Any, input::Dict)
 
 Interprets an expression or symbol with the given symboltable and the input.
 WARNING: This function throws exceptions that are caused in the given expression.
 These exceptions have to be handled by the caller of this function.
 """
-function execute_on_input(tab::SymbolTable, expr::Any, input::Dict)::Any
+function execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, <:Any})::Any
     # Add input variable values
     symbols = merge(tab, input)
     return interpret(symbols, expr)
@@ -59,14 +59,26 @@ end
 
 
 """
-    execute_on_examples(tab::SymbolTable, expr::Any, inputs::Vector{Dict{Symbol, Any}})::Vector{Any}
+    execute_on_input(tab::SymbolTable, expr::Any, inputs::Vector{Dict{Symbol, Any}})::Vector{Any}
 
 Executes a given expression on a set of inputs and returns the respective outputs.
 WARNING: This function throws exceptions that are caused in the given expression.
 These exceptions have to be handled by the caller of this function.
 """
 function execute_on_input(tab::SymbolTable, expr::Any, input::Vector{Dict{Symbol, Any}})::Vector{Any}
-    return [execute_on_input(tab, expr, example) for example in example_inputs]
+    return [execute_on_input(tab, expr, example) for example in input]
+end
+
+function execute_on_input(grammar::Grammar, program::RuleNode, input::Vector{Dict{Symbol, Any}})::Vector{Any}
+    expression = rulenode2expr(program, grammar)
+    symboltable = SymbolTable(grammar)
+    return execute_on_input(symboltable, expression, input)
+end
+
+function execute_on_input(grammar::Grammar, program::RuleNode, input::Dict{Symbol, Any})::Any
+    expression = rulenode2expr(program, grammar)
+    symboltable = SymbolTable(grammar)
+    return execute_on_input(symboltable, expression, input)
 end
 
 

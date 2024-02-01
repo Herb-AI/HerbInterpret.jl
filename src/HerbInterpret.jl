@@ -1,8 +1,8 @@
 module HerbInterpret
 
 using HerbCore
-using HerbData
 using HerbGrammar
+using HerbSpecification
 
 include("interpreter.jl")
 
@@ -11,6 +11,5 @@ export
     interpret,
 
     execute_on_input
-
 
 end # module HerbInterpret
