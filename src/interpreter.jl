@@ -10,7 +10,6 @@ These exceptions have to be handled by the caller of this function.
 """
 function test_all_examples(tab::SymbolTable, expr::Any, examples::Vector{IOExample})::Vector{Bool}
     depwarn("`test_all_examples` is deprecated and should no longer be used.", :test_all_examples)
-    throw(ErrorException("`test_all_examples` has been deprecated and should not be used."))
 
     outcomes = Vector{Bool}(undef, length(examples))
     for example ∈ filter(e -> e isa IOExample, examples)
@@ -28,7 +27,6 @@ Returns false if one of the examples produces an error.
 """
 function test_examples(tab::SymbolTable, expr::Any, examples::Vector{IOExample})::Bool
     depwarn("`test_examples` is deprecated and should no longer be used.", :test_examples)
-    throw(ErrorException("`test_examples` has been deprecated and should not be used."))
 
     for example ∈ filter(e -> e isa IOExample, examples)
         try 
@@ -89,7 +87,6 @@ Runs a program on the examples and returns tuples of actual desired output and t
 """
 function evaluate_program(program::RuleNode, examples::Vector{<:IOExample}, grammar::Grammar, evaluation_function::Function)
     depwarn("`evaluate_program` is deprecated and should no longer be used. Please use HerbSearch.evaluate instead.", :evaluate_program)
-    throw(ErrorException("`evaluate_program` has been deprecated and should not be used."))
 
     results = Tuple{<:Number,<:Number}[]
     expression = rulenode2expr(program, grammar)
@@ -180,13 +177,6 @@ function interpret(tab::SymbolTable, ex::Expr)
         else
             return interpret(tab, args[3])
         end
-    elseif ex.head == :while
-        result = nothing
-
-        while interpret(tab, ex.args[1])
-            result = interpret(tab, ex.args[2])
-        end
-        return result
     else
         error("Expression type not supported")
     end
