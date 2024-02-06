@@ -49,12 +49,11 @@ Interprets an expression or symbol with the given symboltable and the input.
 WARNING: This function throws exceptions that are caused in the given expression.
 These exceptions have to be handled by the caller of this function.
 """
-function execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, <:Any})::Any
+function execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, Any})::Any
     # Add input variable values
     symbols = merge(tab, input)
     return interpret(symbols, expr)
 end
-
 
 """
     execute_on_input(tab::SymbolTable, expr::Any, inputs::Vector{Dict{Symbol, Any}})::Vector{Any}
@@ -63,7 +62,7 @@ Executes a given expression on a set of inputs and returns the respective output
 WARNING: This function throws exceptions that are caused in the given expression.
 These exceptions have to be handled by the caller of this function.
 """
-function execute_on_input(tab::SymbolTable, expr::Any, input::Vector{Dict{Symbol, Any}})::Vector{Any}
+function execute_on_input(tab::SymbolTable, expr::Any, input::Vector{Dict{Symbol, <:Any}})::Vector{Any}
     return [execute_on_input(tab, expr, example) for example in input]
 end
 
