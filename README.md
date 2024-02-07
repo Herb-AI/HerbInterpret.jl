@@ -1,4 +1,4 @@
-[![Build Status](https://github.com/Herb-AI/Herb.jl/actions/workflows/CI.yml/badge.svg?branch=master)](https://github.com/Herb-AI/HerbInterpret.jl/actions/workflows/CI.yml?query=branch%3Amaster)
+[![Build Status](https://github.com/Herb-AI/HerbInterpret.jl/actions/workflows/CI.yml/badge.svg?branch=master)](https://github.com/Herb-AI/HerbInterpret.jl/actions/workflows/CI.yml?query=branch%3Amaster)
 [![Dev-Docs](https://img.shields.io/badge/docs-latest-blue.svg)](https://Herb-AI.github.io/Herb.jl/dev)
 
 # HerbInterpret.jl
