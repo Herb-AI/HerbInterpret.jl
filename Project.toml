@@ -11,6 +11,7 @@ HerbSpecification = "6d54aada-062f-46d8-85cf-a1ceaf058a06"
 [compat]
 HerbCore = "0.1.1"
 HerbGrammar = "0.1.0"
+HerbSpecification = "0.1"
 julia = "1.8"
 
 [extras]
