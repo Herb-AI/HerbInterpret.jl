@@ -2,6 +2,9 @@ using Base: depwarn
 """
     test_all_examples(tab::SymbolTable, expr::Any, examples::Vector{IOExample})::Vector{Bool}
 
+!!! warning 
+    This function is deprecated. Please use [`execute_on_input`](@ref) instead.
+
 Runs the interpreter on all examples with the given input table and expression. 
 The symbol table defines everything (functions, symbols) that are not input variables to the program to be synthesised.
 Returns a list of true/false values indicating if the expression satisfies the corresponding example.
@@ -20,6 +23,9 @@ end
 
 """
     test_examples(tab::SymbolTable, expr::Any, examples::Vector{IOExample})::Bool
+
+!!! warning 
+    This function is deprecated. Please use [`execute_on_input`](@ref) instead.
 
 Evaluates all examples and returns true iff all examples pass.
 Shortcircuits as soon as an example is found for which the program doesn't work. 
@@ -41,38 +47,80 @@ function test_examples(tab::SymbolTable, expr::Any, examples::Vector{IOExample})
     return true
 end
 
+"""
+    execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, T})::Any where T
+
+Evaluates an expression `expr` within the context of a symbol table `tab` and a single input dictionary `input`. 
+The input dictionary keys should match the symbols used in the expression, and their values are used during the expression's evaluation.
+
+# Arguments
+- `tab::SymbolTable`: A symbol table containing predefined symbols and their associated values or functions.
+- `expr::Any`: The expression to be evaluated. Can be any Julia expression that is valid within the context of the provided symbol table and input.
+- `input::Dict{Symbol, T}`: A dictionary where each key is a symbol used in the expression, and the value is the corresponding value to be used in the expression's evaluation. The type `T` can be any type.
+
+# Returns
+- `Any`: The result of evaluating the expression with the given symbol table and input dictionary.
+
+!!! warning
+    This function throws exceptions that are caused in the given expression. These exceptions have to be handled by the caller of this function.
 
 """
-    execute_on_input(tab::SymbolTable, expr::Any, input::Dict)
-
-Interprets an expression or symbol with the given symboltable and the input.
-WARNING: This function throws exceptions that are caused in the given expression.
-These exceptions have to be handled by the caller of this function.
-"""
-function execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, Any})::Any
+function execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, T})::Any where T
     # Add input variable values
     symbols = merge(tab, input)
     return interpret(symbols, expr)
 end
 
 """
-    execute_on_input(tab::SymbolTable, expr::Any, inputs::Vector{Dict{Symbol, Any}})::Vector{Any}
+    execute_on_input(tab::SymbolTable, expr::Any, input::Vector{T})::Vector{<:Any} where T <: Dict{Symbol, <:Any}
 
-Executes a given expression on a set of inputs and returns the respective outputs.
-WARNING: This function throws exceptions that are caused in the given expression.
-These exceptions have to be handled by the caller of this function.
+Wrapper around [`execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, T})`](@ref) to execute all inputs given as an array.
+
+# Arguments
+- `tab::SymbolTable`: A symbol table containing predefined symbols and their associated values or functions.
+- `expr::Any`: The expression to be evaluated for each input dictionary.
+- `inputs::Vector{T}`: A vector of dictionaries, each serving as an individual set of inputs for the expression's evaluation.
+
+# Returns
+- `Vector{<:Any}`: A vector containing the results of evaluating the expression for each input dictionary.
 """
-function execute_on_input(tab::SymbolTable, expr::Any, input::Vector{Dict{Symbol, <:Any}})::Vector{Any}
+function execute_on_input(tab::SymbolTable, expr::Any, input::Vector{T})::Vector{<:Any} where T <: Dict{Symbol, <:Any}
     return [execute_on_input(tab, expr, example) for example in input]
 end
 
-function execute_on_input(grammar::Grammar, program::RuleNode, input::Vector{Dict{Symbol, Any}})::Vector{Any}
+"""
+    execute_on_input(grammar::Grammar, program::RuleNode, input::Dict{Symbol, T})::Any where T
+
+Converts a `RuleNode` program into an expression using a given `grammar`, then evaluates this expression with a single input dictionary `input` and a symbol table derived from the `grammar` using [`execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, T})`](@ref).
+
+# Arguments
+- `grammar::Grammar`: A grammar object used to convert the `RuleNode` into an executable expression.
+- `program::RuleNode`: The program, represented as a `RuleNode`, to be converted and evaluated.
+- `input::Dict{Symbol, T}`: A dictionary providing input values for symbols used in the generated expression.
+
+# Returns
+- `Any`: The result of evaluating the generated expression with the given input dictionary.
+"""
+function execute_on_input(grammar::Grammar, program::RuleNode, input::Dict{Symbol, T})::Any where T
     expression = rulenode2expr(program, grammar)
     symboltable = SymbolTable(grammar)
     return execute_on_input(symboltable, expression, input)
 end
 
-function execute_on_input(grammar::Grammar, program::RuleNode, input::Dict{Symbol, Any})::Any
+"""
+    execute_on_input(grammar::Grammar, program::RuleNode, input::Vector{T})::Vector{Any} where T <: Dict{Symbol, <:Any}
+
+Converts a `RuleNode` program into an expression using a given `grammar`, then evaluates this expression for each input dictionary in a vector `input` and a symbol table derived from the `grammar` using [`execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, T})`](@ref).
+
+# Arguments
+- `grammar::Grammar`: A grammar object used to convert the `RuleNode` into an executable expression.
+- `program::RuleNode`: The program, represented as a `RuleNode`, to be converted and evaluated.
+- `input::Vector{T}`: A vector of dictionaries, each providing input values for symbols used in the generated expression.
+
+# Returns
+- `Vector{Any}`: A vector containing the results of evaluating the generated expression for each input dictionary.
+"""
+function execute_on_input(grammar::Grammar, program::RuleNode, input::Vector{T})::Vector{Any} where T <: Dict{Symbol, <:Any}
     expression = rulenode2expr(program, grammar)
     symboltable = SymbolTable(grammar)
     return execute_on_input(symboltable, expression, input)
