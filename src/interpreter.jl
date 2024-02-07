@@ -41,15 +41,14 @@ function test_examples(tab::SymbolTable, expr::Any, examples::Vector{IOExample})
     return true
 end
 
-
 """
-    execute_on_input(tab::SymbolTable, expr::Any, input::Dict)
+    execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, <:Any})
 
 Interprets an expression or symbol with the given symboltable and the input.
 WARNING: This function throws exceptions that are caused in the given expression.
 These exceptions have to be handled by the caller of this function.
 """
-function execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, <:Any})::Any
+function execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, T})::Any where T
     # Add input variable values
     symbols = merge(tab, input)
     return interpret(symbols, expr)
@@ -63,21 +62,22 @@ Executes a given expression on a set of inputs and returns the respective output
 WARNING: This function throws exceptions that are caused in the given expression.
 These exceptions have to be handled by the caller of this function.
 """
-function execute_on_input(tab::SymbolTable, expr::Any, input::Vector{Dict{Symbol, Any}})::Vector{Any}
+function execute_on_input(tab::SymbolTable, expr::Any, input::Vector{T})::Vector{<:Any} where T <: Dict{Symbol, <:Any}
     return [execute_on_input(tab, expr, example) for example in input]
 end
 
-function execute_on_input(grammar::Grammar, program::RuleNode, input::Vector{Dict{Symbol, Any}})::Vector{Any}
+function execute_on_input(grammar::Grammar, program::RuleNode, input::Dict{Symbol, T})::Any where T
     expression = rulenode2expr(program, grammar)
     symboltable = SymbolTable(grammar)
     return execute_on_input(symboltable, expression, input)
 end
 
-function execute_on_input(grammar::Grammar, program::RuleNode, input::Dict{Symbol, Any})::Any
+function execute_on_input(grammar::Grammar, program::RuleNode, input::Vector{T})::Vector{Any} where T <: Dict{Symbol, <:Any}
     expression = rulenode2expr(program, grammar)
     symboltable = SymbolTable(grammar)
     return execute_on_input(symboltable, expression, input)
 end
+
 
 
 """
