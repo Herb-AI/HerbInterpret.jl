@@ -3,6 +3,7 @@ Pkg.activate(@__DIR__) # activate the benchmark environment
 Pkg.instantiate()
 
 using BenchmarkTools
+using HerbInterpret
 
 const SUITE = BenchmarkGroup()
 
