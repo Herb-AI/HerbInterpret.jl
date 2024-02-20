@@ -15,6 +15,7 @@ tab = Dict{Symbol, Any}(
     :string => string,
     :Int    => Int64,
     :String => String,
+    :input1 => 15
 )
 
 SUITE["interpret"]["compiled"] = @benchmarkable example = (input1) -> if input1 % 5 == 0 && input1 % 3 == 0 return "FizzBuzz" else string(input1) end
