@@ -1,3 +1,7 @@
+using Pkg
+Pkg.activate(@__DIR__) # activate the benchmark environment
+Pkg.instantiate()
+
 using BenchmarkTools
 
 const SUITE = BenchmarkGroup()
