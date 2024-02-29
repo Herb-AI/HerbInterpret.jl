@@ -89,38 +89,38 @@ function execute_on_input(tab::SymbolTable, expr::Any, input::Vector{T})::Vector
 end
 
 """
-    execute_on_input(grammar::Grammar, program::RuleNode, input::Dict{Symbol, T})::Any where T
+    execute_on_input(grammar::AbstractGrammar, program::RuleNode, input::Dict{Symbol, T})::Any where T
 
 Converts a `RuleNode` program into an expression using a given `grammar`, then evaluates this expression with a single input dictionary `input` and a symbol table derived from the `grammar` using [`execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, T})`](@ref).
 
 # Arguments
-- `grammar::Grammar`: A grammar object used to convert the `RuleNode` into an executable expression.
+- `grammar::AbstractGrammar`: A grammar object used to convert the `RuleNode` into an executable expression.
 - `program::RuleNode`: The program, represented as a `RuleNode`, to be converted and evaluated.
 - `input::Dict{Symbol, T}`: A dictionary providing input values for symbols used in the generated expression.
 
 # Returns
 - `Any`: The result of evaluating the generated expression with the given input dictionary.
 """
-function execute_on_input(grammar::Grammar, program::RuleNode, input::Dict{Symbol, T})::Any where T
+function execute_on_input(grammar::AbstractGrammar, program::RuleNode, input::Dict{Symbol, T})::Any where T
     expression = rulenode2expr(program, grammar)
     symboltable = SymbolTable(grammar)
     return execute_on_input(symboltable, expression, input)
 end
 
 """
-    execute_on_input(grammar::Grammar, program::RuleNode, input::Vector{T})::Vector{Any} where T <: Dict{Symbol, <:Any}
+    execute_on_input(grammar::AbstractGrammar, program::RuleNode, input::Vector{T})::Vector{Any} where T <: Dict{Symbol, <:Any}
 
 Converts a `RuleNode` program into an expression using a given `grammar`, then evaluates this expression for each input dictionary in a vector `input` and a symbol table derived from the `grammar` using [`execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, T})`](@ref).
 
 # Arguments
-- `grammar::Grammar`: A grammar object used to convert the `RuleNode` into an executable expression.
+- `grammar::AbstractGrammar`: A grammar object used to convert the `RuleNode` into an executable expression.
 - `program::RuleNode`: The program, represented as a `RuleNode`, to be converted and evaluated.
 - `input::Vector{T}`: A vector of dictionaries, each providing input values for symbols used in the generated expression.
 
 # Returns
 - `Vector{Any}`: A vector containing the results of evaluating the generated expression for each input dictionary.
 """
-function execute_on_input(grammar::Grammar, program::RuleNode, input::Vector{T})::Vector{Any} where T <: Dict{Symbol, <:Any}
+function execute_on_input(grammar::AbstractGrammar, program::RuleNode, input::Vector{T})::Vector{Any} where T <: Dict{Symbol, <:Any}
     expression = rulenode2expr(program, grammar)
     symboltable = SymbolTable(grammar)
     return execute_on_input(symboltable, expression, input)
@@ -128,11 +128,11 @@ end
 
 
 """
-    evaluate_program(program::RuleNode, examples::Vector{<:IOExample}, grammar::Grammar, evaluation_function::Function)
+    evaluate_program(program::RuleNode, examples::Vector{<:IOExample}, grammar::AbstractGrammar, evaluation_function::Function)
 
 Runs a program on the examples and returns tuples of actual desired output and the program's output
 """
-function evaluate_program(program::RuleNode, examples::Vector{<:IOExample}, grammar::Grammar, evaluation_function::Function)
+function evaluate_program(program::RuleNode, examples::Vector{<:IOExample}, grammar::AbstractGrammar, evaluation_function::Function)
     depwarn("`evaluate_program` is deprecated and should no longer be used. Please use HerbSearch.evaluate instead.", :evaluate_program)
 
     results = Tuple{<:Number,<:Number}[]

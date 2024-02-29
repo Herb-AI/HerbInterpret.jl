@@ -46,7 +46,7 @@ end
         end
     end
 
-    @testset "With Grammar and RuleNode" begin
+    @testset "With grammar and RuleNode" begin
         grammar = create_dummy_grammar() # integer arithmetic
         program = create_dummy_rulenode() # :(1+x)
 
