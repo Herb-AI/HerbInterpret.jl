@@ -74,7 +74,7 @@ end
 """
     execute_on_input(tab::SymbolTable, expr::Any, input::Vector{T})::Vector{<:Any} where T <: Dict{Symbol, <:Any}
 
-Wrapper around [`execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, T})`](@ref) to execute all inputs given as an array.
+Wrapper around [`execute_on_input`](@ref) to execute all inputs given as an array.
 
 # Arguments
 - `tab::SymbolTable`: A symbol table containing predefined symbols and their associated values or functions.
@@ -91,7 +91,7 @@ end
 """
     execute_on_input(grammar::AbstractGrammar, program::RuleNode, input::Dict{Symbol, T})::Any where T
 
-Converts a `RuleNode` program into an expression using a given `grammar`, then evaluates this expression with a single input dictionary `input` and a symbol table derived from the `grammar` using [`execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, T})`](@ref).
+Converts a `RuleNode` program into an expression using a given `grammar`, then evaluates this expression with a single input dictionary `input` and a symbol table derived from the `grammar` using `execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, T})`.
 
 # Arguments
 - `grammar::AbstractGrammar`: A grammar object used to convert the `RuleNode` into an executable expression.
@@ -110,7 +110,7 @@ end
 """
     execute_on_input(grammar::AbstractGrammar, program::RuleNode, input::Vector{T})::Vector{Any} where T <: Dict{Symbol, <:Any}
 
-Converts a `RuleNode` program into an expression using a given `grammar`, then evaluates this expression for each input dictionary in a vector `input` and a symbol table derived from the `grammar` using [`execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, T})`](@ref).
+Converts a `RuleNode` program into an expression using a given `grammar`, then evaluates this expression for each input dictionary in a vector `input` and a symbol table derived from the `grammar` using `execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, T})`.
 
 # Arguments
 - `grammar::AbstractGrammar`: A grammar object used to convert the `RuleNode` into an executable expression.
