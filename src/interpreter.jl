@@ -35,7 +35,7 @@ function test_examples(tab::SymbolTable, expr::Any, examples::Vector{IOExample})
     depwarn("`test_examples` is deprecated and should no longer be used.", :test_examples)
 
     for example ∈ filter(e -> e isa IOExample, examples)
-        try 
+        try
             output = execute_on_input(tab, expr, example.in)
             if output ≠ execute_on_input(tab, expr, example.in)
                 return false
@@ -90,7 +90,7 @@ Wrapper around [`execute_on_input`](@ref) to execute all inputs given as an arra
 # Returns
 - `Vector{<:Any}`: A vector containing the results of evaluating the expression for each input dictionary.
 """
-function execute_on_input(tab::SymbolTable, expr::Any, input::Vector{T})::Vector{<:Any} where T <: Dict{Symbol, <:Any}
+function execute_on_input(tab::SymbolTable, expr::Any, input::Vector{T})::Vector{<:Any} where {T<:Dict{Symbol,<:Any}}
     return [execute_on_input(tab, expr, example) for example in input]
 end
 
@@ -107,7 +107,7 @@ Converts a `RuleNode` program into an expression using a given `grammar`, then e
 # Returns
 - `Any`: The result of evaluating the generated expression with the given input dictionary.
 """
-function execute_on_input(grammar::AbstractGrammar, program::RuleNode, input::Dict{Symbol, T})::Any where T
+function execute_on_input(grammar::AbstractGrammar, program::RuleNode, input::Dict{Symbol,T})::Any where {T}
     expression = rulenode2expr(program, grammar)
     symboltable = SymbolTable(grammar)
     return execute_on_input(symboltable, expression, input)
@@ -126,7 +126,7 @@ Converts a `RuleNode` program into an expression using a given `grammar`, then e
 # Returns
 - `Vector{Any}`: A vector containing the results of evaluating the generated expression for each input dictionary.
 """
-function execute_on_input(grammar::AbstractGrammar, program::RuleNode, input::Vector{T})::Vector{Any} where T <: Dict{Symbol, <:Any}
+function execute_on_input(grammar::AbstractGrammar, program::RuleNode, input::Vector{T})::Vector{Any} where {T<:Dict{Symbol,<:Any}}
     expression = rulenode2expr(program, grammar)
     symboltable = SymbolTable(grammar)
     return execute_on_input(symboltable, expression, input)
@@ -276,12 +276,12 @@ function interpret(ex::Expr, M::Module=Main)
         Core.eval(M, ex)
     end
 end
-call_func(M::Module, f::Symbol) = getproperty(M,f)()
-call_func(M::Module, f::Symbol, x1) = getproperty(M,f)f(x1)
-call_func(M::Module, f::Symbol, x1, x2) = getproperty(M,f)(x1, x2)
-call_func(M::Module, f::Symbol, x1, x2, x3) = getproperty(M,f)(x1, x2, x3)
-call_func(M::Module, f::Symbol, x1, x2, x3, x4) = getproperty(M,f)(x1, x2, x3, x4)
-call_func(M::Module, f::Symbol, x1, x2, x3, x4, x5) = getproperty(M,f)(x1, x2, x3, x4, x5)
+call_func(M::Module, f::Symbol) = getproperty(M, f)()
+call_func(M::Module, f::Symbol, x1) = getproperty(M, f)f(x1)
+call_func(M::Module, f::Symbol, x1, x2) = getproperty(M, f)(x1, x2)
+call_func(M::Module, f::Symbol, x1, x2, x3) = getproperty(M, f)(x1, x2, x3)
+call_func(M::Module, f::Symbol, x1, x2, x3, x4) = getproperty(M, f)(x1, x2, x3, x4)
+call_func(M::Module, f::Symbol, x1, x2, x3, x4, x5) = getproperty(M, f)(x1, x2, x3, x4, x5)
 
 """
     update_✝γ_path(✝γ_code_path::Vector{Char}, ✝γ_actual_code_path::Vector{Char})
