@@ -10,6 +10,7 @@ export
     SymbolTable,
     interpret,
 
-    execute_on_input
+    execute_on_input,
+    update_✝γ_path
 
 end # module HerbInterpret

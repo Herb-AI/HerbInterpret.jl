@@ -169,59 +169,71 @@ interpret(tab, ex)
 WARNING: This function throws exceptions that are caused in the given expression.
 These exceptions have to be handled by the caller of this function.
 """
-interpret(tab::SymbolTable, x::Any) = x
-interpret(tab::SymbolTable, s::Symbol) = tab[s]
+interpret(tab::SymbolTable, x::Any, _::Any...) = x
+interpret(tab::SymbolTable, s::Symbol, _::Any...) = tab[s]
 
 function interpret(tab::SymbolTable, ex::Expr, attempt_code_path::Union{Vector{Char},Nothing}=nothing, actual_code_path::Union{Vector{Char},Nothing}=nothing)
     args = ex.args
     if ex.head == :call
         if ex.args[1] == Symbol(".&")
-            return (interpret(tab, args[2]) .& interpret(tab, args[3]))
+            return (interpret(tab, args[2], attempt_code_path, actual_code_path) .& interpret(tab, args[3], attempt_code_path, actual_code_path))
         elseif ex.args[1] == Symbol(".|")
-            return (interpret(tab, args[2]) .| interpret(tab, args[3]))
+            return (interpret(tab, args[2], attempt_code_path, actual_code_path) .| interpret(tab, args[3], attempt_code_path, actual_code_path))
         elseif ex.args[1] == Symbol(".==")
-            return (interpret(tab, args[2]) .== interpret(tab, args[3]))
+            return (interpret(tab, args[2], attempt_code_path, actual_code_path) .== interpret(tab, args[3], attempt_code_path, actual_code_path))
         elseif ex.args[1] == Symbol(".>=")
-            return (interpret(tab, args[2]) .>= interpret(tab, args[3]))
+            return (interpret(tab, args[2], attempt_code_path, actual_code_path) .>= interpret(tab, args[3], attempt_code_path, actual_code_path))
         elseif ex.args[1] == Symbol(".<=")
-            return (interpret(tab, args[2]) .<= interpret(tab, args[3]))
+            return (interpret(tab, args[2], attempt_code_path, actual_code_path) .<= interpret(tab, args[3], attempt_code_path, actual_code_path))
+        elseif ex.args[1] == Symbol("<")
+            return (interpret(tab, args[2], attempt_code_path, actual_code_path) < interpret(tab, args[3], attempt_code_path, actual_code_path))
         else
             len = length(args)
             #unroll for performance and avoid excessive allocations
             if len == 1
                 return tab[args[1]]()
             elseif len == 2
-                return tab[args[1]](interpret(tab,args[2]))
+                return tab[args[1]](interpret(tab, args[2], attempt_code_path, actual_code_path))
             elseif len == 3
-                return tab[args[1]](interpret(tab,args[2]), interpret(tab,args[3]))
+                return tab[args[1]](interpret(tab, args[2], attempt_code_path, actual_code_path), interpret(tab, args[3], attempt_code_path, actual_code_path))
             elseif len == 4
-                return tab[args[1]](interpret(tab,args[2]), interpret(tab,args[3]), interpret(tab,args[4]))
+                return tab[args[1]](
+                    interpret(tab, args[2], attempt_code_path, actual_code_path),
+                    interpret(tab, args[3], attempt_code_path, actual_code_path),
+                    interpret(tab, args[4], attempt_code_path, actual_code_path))
             elseif len == 5
-                return tab[args[1]](interpret(tab,args[2]), interpret(tab,args[3]), interpret(tab,args[4]),
-                                       interpret(tab,args[5]))
+                return tab[args[1]](
+                    interpret(tab, args[2], attempt_code_path, actual_code_path),
+                    interpret(tab, args[3], attempt_code_path, actual_code_path),
+                    interpret(tab, args[4], attempt_code_path, actual_code_path),
+                    interpret(tab, args[5], attempt_code_path, actual_code_path))
             elseif len == 6
-                return tab[args[1]](interpret(tab,args[2]), interpret(tab,args[3]), interpret(tab,args[4]),
-                                       interpret(tab,args[5]), interpret(tab,args[6]))
+                return tab[args[1]](
+                    interpret(tab, args[2], attempt_code_path, actual_code_path),
+                    interpret(tab, args[3], attempt_code_path, actual_code_path),
+                    interpret(tab, args[4], attempt_code_path, actual_code_path),
+                    interpret(tab, args[5], attempt_code_path, actual_code_path),
+                    interpret(tab, args[6], attempt_code_path, actual_code_path))
             else
-                return tab[args[1]](interpret.(Ref(tab),args[2:end])...)
+                return tab[args[1]](interpret.(Ref(tab), args[2:end], Ref(attempt_code_path), Ref(actual_code_path))...)
             end
         end
     elseif ex.head == :(.)
-        return Base.broadcast(Base.eval(args[1]), interpret(tab, args[2])...)
+        return Base.broadcast(Base.eval(args[1]), interpret(tab, args[2], attempt_code_path, actual_code_path)...)
     elseif ex.head == :tuple
-        return tuple(interpret.(Ref(tab), args)...)
+        return tuple(interpret.(Ref(tab), args, Ref(attempt_code_path), Ref(actual_code_path))...)
     elseif ex.head == :vect
-        return [interpret.(Ref(tab), args)...]
+        return [interpret.(Ref(tab), args, Ref(attempt_code_path), Ref(actual_code_path))...]
     elseif ex.head == :||
-        return (interpret(tab, args[1]) || interpret(tab, args[2]))
+        return (interpret(tab, args[1], attempt_code_path, actual_code_path) || interpret(tab, args[2], attempt_code_path, actual_code_path))
     elseif ex.head == :&&
-        return (interpret(tab, args[1]) && interpret(tab, args[2]))
+        return (interpret(tab, args[1], attempt_code_path, actual_code_path) && interpret(tab, args[2], attempt_code_path, actual_code_path))
     elseif ex.head == :(=)
-        return (tab[args[1]] = interpret(tab, args[2])) #assignments made to symboltable
+        return (tab[args[1]] = interpret(tab, args[2], attempt_code_path, actual_code_path)) #assignments made to symboltable
     elseif ex.head == :block
         result = nothing
         for x in args
-            result = interpret(tab, x)
+            result = interpret(tab, x, attempt_code_path, actual_code_path)
         end
         return result
     elseif ex.head == :if && !isnothing(actual_code_path)
@@ -232,14 +244,18 @@ function interpret(tab::SymbolTable, ex::Expr, attempt_code_path::Union{Vector{C
             return interpret(tab, args[3], attempt_code_path, actual_code_path)
         end
     elseif ex.head == :if
-        if interpret(tab, args[1])
-            return interpret(tab, args[2])
+        if interpret(tab, args[1], attempt_code_path, actual_code_path)
+            return interpret(tab, args[2], attempt_code_path, actual_code_path)
         else
-            return interpret(tab, args[3])
+            return interpret(tab, args[3], attempt_code_path, actual_code_path)
         end
     elseif ex.head == :while && !isnothing(actual_code_path)
         interpret(tab, args[1], attempt_code_path, actual_code_path)
         while update_✝γ_path(attempt_code_path, actual_code_path)
+            interpret(tab, args[2], attempt_code_path, actual_code_path)
+        end
+    elseif ex.head == :while
+        while interpret(tab, args[1], attempt_code_path, actual_code_path)
             interpret(tab, args[2], attempt_code_path, actual_code_path)
         end
     elseif ex.head == :return
@@ -266,3 +282,29 @@ call_func(M::Module, f::Symbol, x1, x2) = getproperty(M,f)(x1, x2)
 call_func(M::Module, f::Symbol, x1, x2, x3) = getproperty(M,f)(x1, x2, x3)
 call_func(M::Module, f::Symbol, x1, x2, x3, x4) = getproperty(M,f)(x1, x2, x3, x4)
 call_func(M::Module, f::Symbol, x1, x2, x3, x4, x5) = getproperty(M,f)(x1, x2, x3, x4, x5)
+
+"""
+    update_✝γ_path(✝γ_code_path::Vector{Char}, ✝γ_actual_code_path::Vector{Char})
+
+The injected function call that goes into where previously were the holes/angelic conditions. It updates the actual path taken during angelic evaluation.
+
+# Arguments
+- `✝γ_code_path`: The `attempted` code path. Values are removed until empty.
+- `✝γ_actual_code_path`: The actual code path - Values from `✝γ_code_path` are appended until it is empty, then only the `false` path is taken.
+
+# Returns
+The next path to be taken in this control statement - either the first value of `✝γ_code_path`, or `false`.
+
+"""
+function update_✝γ_path(✝γ_code_path::Vector{Char}, ✝γ_actual_code_path::Vector{Char})::Bool
+    # If attempted flow already completed - append `false` until return
+    if length(✝γ_code_path) == 0
+        push!(✝γ_actual_code_path, '0')
+        return false
+    end
+    # Else take next and append to actual path
+    res = ✝γ_code_path[1]
+    popfirst!(✝γ_code_path)
+    push!(✝γ_actual_code_path, res)
+    res == '1'
+end
