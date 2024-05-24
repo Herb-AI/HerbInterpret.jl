@@ -65,10 +65,16 @@ The input dictionary keys should match the symbols used in the expression, and t
     This function throws exceptions that are caused in the given expression. These exceptions have to be handled by the caller of this function.
 
 """
-function execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, T})::Any where T
+function execute_on_input(
+    tab::SymbolTable,
+    expr::Any,
+    input::Dict{Symbol,T},
+    attempt_code_path::Union{Vector{Char},Nothing}=nothing,
+    actual_code_path::Union{Vector{Char},Nothing}=nothing
+)::Any where {T}
     # Add input variable values
     symbols = merge(tab, input)
-    return interpret(symbols, expr)
+    return interpret(symbols, expr, attempt_code_path, actual_code_path)
 end
 
 """
@@ -166,7 +172,7 @@ These exceptions have to be handled by the caller of this function.
 interpret(tab::SymbolTable, x::Any) = x
 interpret(tab::SymbolTable, s::Symbol) = tab[s]
 
-function interpret(tab::SymbolTable, ex::Expr)
+function interpret(tab::SymbolTable, ex::Expr, attempt_code_path::Union{Vector{Char},Nothing}=nothing, actual_code_path::Union{Vector{Char},Nothing}=nothing)
     args = ex.args
     if ex.head == :call
         if ex.args[1] == Symbol(".&")
@@ -218,12 +224,26 @@ function interpret(tab::SymbolTable, ex::Expr)
             result = interpret(tab, x)
         end
         return result
+    elseif ex.head == :if && !isnothing(actual_code_path)
+        interpret(tab, args[1], attempt_code_path, actual_code_path)
+        if update_✝γ_path(attempt_code_path, actual_code_path)
+            return interpret(tab, args[2], attempt_code_path, actual_code_path)
+        else
+            return interpret(tab, args[3], attempt_code_path, actual_code_path)
+        end
     elseif ex.head == :if
         if interpret(tab, args[1])
             return interpret(tab, args[2])
         else
             return interpret(tab, args[3])
         end
+    elseif ex.head == :while && !isnothing(actual_code_path)
+        interpret(tab, args[1], attempt_code_path, actual_code_path)
+        while update_✝γ_path(attempt_code_path, actual_code_path)
+            interpret(tab, args[2], attempt_code_path, actual_code_path)
+        end
+    elseif ex.head == :return
+        interpret(tab, args[1], attempt_code_path, actual_code_path)
     else
         error("Expression type not supported")
     end
