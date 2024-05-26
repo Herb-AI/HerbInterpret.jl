@@ -70,11 +70,12 @@ function execute_on_input(
     expr::Any,
     input::Dict{Symbol,T},
     attempt_code_path::Union{Vector{Char},Nothing}=nothing,
-    actual_code_path::Union{Vector{Char},Nothing}=nothing
+    actual_code_path::Union{Vector{Char},Nothing}=nothing,
+    limit_iterations::Int=30,
 )::Any where {T}
     # Add input variable values
     symbols = merge(tab, input)
-    return interpret(symbols, expr, attempt_code_path, actual_code_path)
+    return interpret(symbols, expr, attempt_code_path, actual_code_path, limit_iterations)
 end
 
 """
@@ -172,94 +173,102 @@ These exceptions have to be handled by the caller of this function.
 interpret(tab::SymbolTable, x::Any, _::Any...) = x
 interpret(tab::SymbolTable, s::Symbol, _::Any...) = tab[s]
 
-function interpret(tab::SymbolTable, ex::Expr, attempt_code_path::Union{Vector{Char},Nothing}=nothing, actual_code_path::Union{Vector{Char},Nothing}=nothing)
+function interpret(tab::SymbolTable, ex::Expr, attempt_code_path::Union{Vector{Char},Nothing}=nothing, actual_code_path::Union{Vector{Char},Nothing}=nothing, it::Int=30)
     args = ex.args
     if ex.head == :call
         if ex.args[1] == Symbol(".&")
-            return (interpret(tab, args[2], attempt_code_path, actual_code_path) .& interpret(tab, args[3], attempt_code_path, actual_code_path))
+            return (interpret(tab, args[2], attempt_code_path, actual_code_path, it) .& interpret(tab, args[3], attempt_code_path, actual_code_path, it))
         elseif ex.args[1] == Symbol(".|")
-            return (interpret(tab, args[2], attempt_code_path, actual_code_path) .| interpret(tab, args[3], attempt_code_path, actual_code_path))
+            return (interpret(tab, args[2], attempt_code_path, actual_code_path, it) .| interpret(tab, args[3], attempt_code_path, actual_code_path, it))
         elseif ex.args[1] == Symbol(".==")
-            return (interpret(tab, args[2], attempt_code_path, actual_code_path) .== interpret(tab, args[3], attempt_code_path, actual_code_path))
+            return (interpret(tab, args[2], attempt_code_path, actual_code_path, it) .== interpret(tab, args[3], attempt_code_path, actual_code_path, it))
         elseif ex.args[1] == Symbol(".>=")
-            return (interpret(tab, args[2], attempt_code_path, actual_code_path) .>= interpret(tab, args[3], attempt_code_path, actual_code_path))
+            return (interpret(tab, args[2], attempt_code_path, actual_code_path, it) .>= interpret(tab, args[3], attempt_code_path, actual_code_path, it))
         elseif ex.args[1] == Symbol(".<=")
-            return (interpret(tab, args[2], attempt_code_path, actual_code_path) .<= interpret(tab, args[3], attempt_code_path, actual_code_path))
+            return (interpret(tab, args[2], attempt_code_path, actual_code_path, it) .<= interpret(tab, args[3], attempt_code_path, actual_code_path, it))
         elseif ex.args[1] == Symbol("<")
-            return (interpret(tab, args[2], attempt_code_path, actual_code_path) < interpret(tab, args[3], attempt_code_path, actual_code_path))
+            return (interpret(tab, args[2], attempt_code_path, actual_code_path, it) < interpret(tab, args[3], attempt_code_path, actual_code_path, it))
         else
             len = length(args)
             #unroll for performance and avoid excessive allocations
             if len == 1
                 return tab[args[1]]()
             elseif len == 2
-                return tab[args[1]](interpret(tab, args[2], attempt_code_path, actual_code_path))
+                return tab[args[1]](interpret(tab, args[2], attempt_code_path, actual_code_path, it))
             elseif len == 3
-                return tab[args[1]](interpret(tab, args[2], attempt_code_path, actual_code_path), interpret(tab, args[3], attempt_code_path, actual_code_path))
+                return tab[args[1]](interpret(tab, args[2], attempt_code_path, actual_code_path, it), interpret(tab, args[3], attempt_code_path, actual_code_path, it))
             elseif len == 4
                 return tab[args[1]](
-                    interpret(tab, args[2], attempt_code_path, actual_code_path),
-                    interpret(tab, args[3], attempt_code_path, actual_code_path),
-                    interpret(tab, args[4], attempt_code_path, actual_code_path))
+                    interpret(tab, args[2], attempt_code_path, actual_code_path, it),
+                    interpret(tab, args[3], attempt_code_path, actual_code_path, it),
+                    interpret(tab, args[4], attempt_code_path, actual_code_path, it))
             elseif len == 5
                 return tab[args[1]](
-                    interpret(tab, args[2], attempt_code_path, actual_code_path),
-                    interpret(tab, args[3], attempt_code_path, actual_code_path),
-                    interpret(tab, args[4], attempt_code_path, actual_code_path),
-                    interpret(tab, args[5], attempt_code_path, actual_code_path))
+                    interpret(tab, args[2], attempt_code_path, actual_code_path, it),
+                    interpret(tab, args[3], attempt_code_path, actual_code_path, it),
+                    interpret(tab, args[4], attempt_code_path, actual_code_path, it),
+                    interpret(tab, args[5], attempt_code_path, actual_code_path, it))
             elseif len == 6
                 return tab[args[1]](
-                    interpret(tab, args[2], attempt_code_path, actual_code_path),
-                    interpret(tab, args[3], attempt_code_path, actual_code_path),
-                    interpret(tab, args[4], attempt_code_path, actual_code_path),
-                    interpret(tab, args[5], attempt_code_path, actual_code_path),
-                    interpret(tab, args[6], attempt_code_path, actual_code_path))
+                    interpret(tab, args[2], attempt_code_path, actual_code_path, it),
+                    interpret(tab, args[3], attempt_code_path, actual_code_path, it),
+                    interpret(tab, args[4], attempt_code_path, actual_code_path, it),
+                    interpret(tab, args[5], attempt_code_path, actual_code_path, it),
+                    interpret(tab, args[6], attempt_code_path, actual_code_path, it))
             else
-                return tab[args[1]](interpret.(Ref(tab), args[2:end], Ref(attempt_code_path), Ref(actual_code_path))...)
+                return tab[args[1]](interpret.(Ref(tab), args[2:end], Ref(attempt_code_path), Ref(actual_code_path), it)...)
             end
         end
     elseif ex.head == :(.)
-        return Base.broadcast(Base.eval(args[1]), interpret(tab, args[2], attempt_code_path, actual_code_path)...)
+        return Base.broadcast(Base.eval(args[1]), interpret(tab, args[2], attempt_code_path, actual_code_path, it)...)
     elseif ex.head == :tuple
-        return tuple(interpret.(Ref(tab), args, Ref(attempt_code_path), Ref(actual_code_path))...)
+        return tuple(interpret.(Ref(tab), args, Ref(attempt_code_path), Ref(actual_code_path), it)...)
     elseif ex.head == :vect
-        return [interpret.(Ref(tab), args, Ref(attempt_code_path), Ref(actual_code_path))...]
+        return [interpret.(Ref(tab), args, Ref(attempt_code_path), Ref(actual_code_path), it)...]
     elseif ex.head == :||
-        return (interpret(tab, args[1], attempt_code_path, actual_code_path) || interpret(tab, args[2], attempt_code_path, actual_code_path))
+        return (interpret(tab, args[1], attempt_code_path, actual_code_path, it) || interpret(tab, args[2], attempt_code_path, actual_code_path, it))
     elseif ex.head == :&&
-        return (interpret(tab, args[1], attempt_code_path, actual_code_path) && interpret(tab, args[2], attempt_code_path, actual_code_path))
+        return (interpret(tab, args[1], attempt_code_path, actual_code_path, it) && interpret(tab, args[2], attempt_code_path, actual_code_path, it))
     elseif ex.head == :(=)
-        return (tab[args[1]] = interpret(tab, args[2], attempt_code_path, actual_code_path)) #assignments made to symboltable
+        return (tab[args[1]] = interpret(tab, args[2], attempt_code_path, actual_code_path, it)) #assignments made to symboltable
     elseif ex.head == :block
         result = nothing
         for x in args
-            result = interpret(tab, x, attempt_code_path, actual_code_path)
+            result = interpret(tab, x, attempt_code_path, actual_code_path, it)
         end
         return result
     elseif ex.head == :if && !isnothing(actual_code_path)
-        interpret(tab, args[1], attempt_code_path, actual_code_path)
+        interpret(tab, args[1], attempt_code_path, actual_code_path, it)
         if update_✝γ_path(attempt_code_path, actual_code_path)
-            return interpret(tab, args[2], attempt_code_path, actual_code_path)
+            return interpret(tab, args[2], attempt_code_path, actual_code_path, it)
         else
-            return interpret(tab, args[3], attempt_code_path, actual_code_path)
+            return interpret(tab, args[3], attempt_code_path, actual_code_path, it)
         end
     elseif ex.head == :if
-        if interpret(tab, args[1], attempt_code_path, actual_code_path)
-            return interpret(tab, args[2], attempt_code_path, actual_code_path)
+        if interpret(tab, args[1], attempt_code_path, actual_code_path, it)
+            return interpret(tab, args[2], attempt_code_path, actual_code_path, it)
         else
-            return interpret(tab, args[3], attempt_code_path, actual_code_path)
+            return interpret(tab, args[3], attempt_code_path, actual_code_path, it)
         end
     elseif ex.head == :while && !isnothing(actual_code_path)
-        interpret(tab, args[1], attempt_code_path, actual_code_path)
+        interpret(tab, args[1], attempt_code_path, actual_code_path, it)
         while update_✝γ_path(attempt_code_path, actual_code_path)
-            interpret(tab, args[2], attempt_code_path, actual_code_path)
+            if it == 0
+                break
+            end
+            it -= 1
+            interpret(tab, args[2], attempt_code_path, actual_code_path, it)
         end
     elseif ex.head == :while
-        while interpret(tab, args[1], attempt_code_path, actual_code_path)
-            interpret(tab, args[2], attempt_code_path, actual_code_path)
+        while interpret(tab, args[1], attempt_code_path, actual_code_path, it)
+            if it == 0
+                break
+            end
+            it -= 1
+            interpret(tab, args[2], attempt_code_path, actual_code_path, it)
         end
     elseif ex.head == :return
-        interpret(tab, args[1], attempt_code_path, actual_code_path)
+        interpret(tab, args[1], attempt_code_path, actual_code_path, it)
     else
         error("Expression type not supported")
     end
