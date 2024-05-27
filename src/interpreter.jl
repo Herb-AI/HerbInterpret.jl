@@ -69,8 +69,8 @@ function execute_on_input(
     tab::SymbolTable,
     expr::Any,
     input::Dict{Symbol,T},
-    attempt_code_path::Union{Vector{Char},Nothing}=nothing,
-    actual_code_path::Union{Vector{Char},Nothing}=nothing,
+    attempt_code_path::Union{BitVector,Nothing}=nothing,
+    actual_code_path::Union{BitVector,Nothing}=nothing,
     limit_iterations::Int=30,
 )::Any where {T}
     # Add input variable values
@@ -173,7 +173,7 @@ These exceptions have to be handled by the caller of this function.
 interpret(tab::SymbolTable, x::Any, _::Any...) = x
 interpret(tab::SymbolTable, s::Symbol, _::Any...) = tab[s]
 
-function interpret(tab::SymbolTable, ex::Expr, attempt_code_path::Union{Vector{Char},Nothing}=nothing, actual_code_path::Union{Vector{Char},Nothing}=nothing, it::Int=30)
+function interpret(tab::SymbolTable, ex::Expr, attempt_code_path::Union{BitVector,Nothing}=nothing, actual_code_path::Union{BitVector,Nothing}=nothing, it::Int=30)
     args = ex.args
     if ex.head == :call
         if ex.args[1] == Symbol(".&")
@@ -293,7 +293,7 @@ call_func(M::Module, f::Symbol, x1, x2, x3, x4) = getproperty(M, f)(x1, x2, x3, 
 call_func(M::Module, f::Symbol, x1, x2, x3, x4, x5) = getproperty(M, f)(x1, x2, x3, x4, x5)
 
 """
-    update_✝γ_path(✝γ_code_path::Vector{Char}, ✝γ_actual_code_path::Vector{Char})
+    update_✝γ_path(✝γ_code_path::BitVector, ✝γ_actual_code_path::BitVector)
 
 The injected function call that goes into where previously were the holes/angelic conditions. It updates the actual path taken during angelic evaluation.
 
@@ -305,15 +305,15 @@ The injected function call that goes into where previously were the holes/angeli
 The next path to be taken in this control statement - either the first value of `✝γ_code_path`, or `false`.
 
 """
-function update_✝γ_path(✝γ_code_path::Vector{Char}, ✝γ_actual_code_path::Vector{Char})::Bool
+function update_✝γ_path(✝γ_code_path::BitVector, ✝γ_actual_code_path::BitVector)::Bool
     # If attempted flow already completed - append `false` until return
     if length(✝γ_code_path) == 0
-        push!(✝γ_actual_code_path, '0')
+        push!(✝γ_actual_code_path, false)
         return false
     end
     # Else take next and append to actual path
     res = ✝γ_code_path[1]
     popfirst!(✝γ_code_path)
     push!(✝γ_actual_code_path, res)
-    res == '1'
+    res == 1
 end
