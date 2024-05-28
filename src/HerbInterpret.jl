@@ -11,6 +11,7 @@ export
     interpret,
 
     execute_on_input,
-    update_✝γ_path
+    update_✝γ_path,
+    CodePath
 
 end # module HerbInterpret

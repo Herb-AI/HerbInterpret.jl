@@ -47,16 +47,27 @@ function test_examples(tab::SymbolTable, expr::Any, examples::Vector{IOExample})
     return true
 end
 
+@kwdef mutable struct CodePath
+    code_path::BitVector
+    idx::UInt8
+end
+
+
 """
-    execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, T})::Any where T
+    execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, T}, attempt_code_path::Union{CodePath, Nothing}, actual_code_path::Union{BitVector, Nothing}, 
+        limit_iterations::Int)::Any where T
 
 Evaluates an expression `expr` within the context of a symbol table `tab` and a single input dictionary `input`. 
 The input dictionary keys should match the symbols used in the expression, and their values are used during the expression's evaluation.
+If provided, a code path should be attempted, and also recorded in the actual_code_path.
 
 # Arguments
 - `tab::SymbolTable`: A symbol table containing predefined symbols and their associated values or functions.
 - `expr::Any`: The expression to be evaluated. Can be any Julia expression that is valid within the context of the provided symbol table and input.
 - `input::Dict{Symbol, T}`: A dictionary where each key is a symbol used in the expression, and the value is the corresponding value to be used in the expression's evaluation. The type `T` can be any type.
+- `attempt_code_path::Union{CodePath, Nothing}`: The attempted code path. Can be `nothing` if no code path should be attempted
+- `actual_code_path::Union{BitVector, Nothing}`: The actual code path. Values from `attempt_code_path` are appended until it is empty, then only the `false` path is taken.
+- `limit_iterations::Int`: The maximum number of iterations allowed for the evaluation of the expression. Used to avoid infinite loops.
 
 # Returns
 - `Any`: The result of evaluating the expression with the given symbol table and input dictionary.
@@ -69,7 +80,7 @@ function execute_on_input(
     tab::SymbolTable,
     expr::Any,
     input::Dict{Symbol,T},
-    attempt_code_path::Union{BitVector,Nothing}=nothing,
+    attempt_code_path::Union{CodePath,Nothing}=nothing,
     actual_code_path::Union{BitVector,Nothing}=nothing,
     limit_iterations::Int=30,
 )::Any where {T}
@@ -173,7 +184,7 @@ These exceptions have to be handled by the caller of this function.
 interpret(tab::SymbolTable, x::Any, _::Any...) = x
 interpret(tab::SymbolTable, s::Symbol, _::Any...) = tab[s]
 
-function interpret(tab::SymbolTable, ex::Expr, attempt_code_path::Union{BitVector,Nothing}=nothing, actual_code_path::Union{BitVector,Nothing}=nothing, it::Int=30)
+function interpret(tab::SymbolTable, ex::Expr, attempt_code_path::Union{CodePath,Nothing}=nothing, actual_code_path::Union{BitVector,Nothing}=nothing, it::Int=30)
     args = ex.args
     if ex.head == :call
         if ex.args[1] == Symbol(".&")
@@ -293,27 +304,27 @@ call_func(M::Module, f::Symbol, x1, x2, x3, x4) = getproperty(M, f)(x1, x2, x3, 
 call_func(M::Module, f::Symbol, x1, x2, x3, x4, x5) = getproperty(M, f)(x1, x2, x3, x4, x5)
 
 """
-    update_✝γ_path(✝γ_code_path::BitVector, ✝γ_actual_code_path::BitVector)
+    update_✝γ_path(✝γ_code_path::CodePath, ✝γ_actual_code_path::BitVector)
 
-The injected function call that goes into where previously were the holes/angelic conditions. It updates the actual path taken during angelic evaluation.
+A helper function used to keep track of the taken code path during execution of control statements.
 
 # Arguments
-- `✝γ_code_path`: The `attempted` code path. Values are removed until empty.
+- `✝γ_code_path`: The `attempted` code path. Values are added until entire path is taken.
 - `✝γ_actual_code_path`: The actual code path - Values from `✝γ_code_path` are appended until it is empty, then only the `false` path is taken.
 
 # Returns
 The next path to be taken in this control statement - either the first value of `✝γ_code_path`, or `false`.
 
 """
-function update_✝γ_path(✝γ_code_path::BitVector, ✝γ_actual_code_path::BitVector)::Bool
+function update_✝γ_path(✝γ_code_path::CodePath, ✝γ_actual_code_path::BitVector)::Bool
     # If attempted flow already completed - append `false` until return
-    if length(✝γ_code_path) == 0
+    if length(✝γ_code_path.code_path) <= ✝γ_code_path.idx
         push!(✝γ_actual_code_path, false)
         return false
     end
     # Else take next and append to actual path
-    res = ✝γ_code_path[1]
-    popfirst!(✝γ_code_path)
+    ✝γ_code_path.idx += 1
+    res = ✝γ_code_path.code_path[✝γ_code_path.idx]
     push!(✝γ_actual_code_path, res)
     res == 1
 end
