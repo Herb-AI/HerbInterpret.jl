@@ -52,6 +52,8 @@ end
     idx::UInt8
 end
 
+angelic_condition_flag = Symbol("update_✝_angelic_path")
+
 
 """
     execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, T}, attempt_code_path::Union{CodePath, Nothing}, actual_code_path::Union{BitVector, Nothing}, 
@@ -248,35 +250,39 @@ function interpret(tab::SymbolTable, ex::Expr, attempt_code_path::Union{CodePath
             result = interpret(tab, x, attempt_code_path, actual_code_path, it)
         end
         return result
-    elseif ex.head == :if && !isnothing(actual_code_path)
-        interpret(tab, args[1], attempt_code_path, actual_code_path, it)
-        if update_✝γ_path(attempt_code_path, actual_code_path)
-            return interpret(tab, args[2], attempt_code_path, actual_code_path, it)
-        else
-            return interpret(tab, args[3], attempt_code_path, actual_code_path, it)
-        end
     elseif ex.head == :if
-        if interpret(tab, args[1], attempt_code_path, actual_code_path, it)
-            return interpret(tab, args[2], attempt_code_path, actual_code_path, it)
-        else
-            return interpret(tab, args[3], attempt_code_path, actual_code_path, it)
-        end
-    elseif ex.head == :while && !isnothing(actual_code_path)
-        interpret(tab, args[1], attempt_code_path, actual_code_path, it)
-        while update_✝γ_path(attempt_code_path, actual_code_path)
-            if it == 0
-                break
+        cond = args[1]
+        if !isnothing(actual_code_path) && cond == angelic_condition_flag
+            if update_✝γ_path(attempt_code_path, actual_code_path)
+                return interpret(tab, args[2], attempt_code_path, actual_code_path, it)
+            else
+                return interpret(tab, args[3], attempt_code_path, actual_code_path, it)
             end
-            it -= 1
-            interpret(tab, args[2], attempt_code_path, actual_code_path, it)
+        else
+            if interpret(tab, args[1], attempt_code_path, actual_code_path, it)
+                return interpret(tab, args[2], attempt_code_path, actual_code_path, it)
+            else
+                return interpret(tab, args[3], attempt_code_path, actual_code_path, it)
+            end
         end
     elseif ex.head == :while
-        while interpret(tab, args[1], attempt_code_path, actual_code_path, it)
-            if it == 0
-                break
+        cond = args[1]
+        if !isnothing(actual_code_path)  && cond == angelic_condition_flag
+            while update_✝γ_path(attempt_code_path, actual_code_path)
+                if it == 0
+                    break
+                end
+                it -= 1
+                interpret(tab, args[2], attempt_code_path, actual_code_path, it)
             end
-            it -= 1
-            interpret(tab, args[2], attempt_code_path, actual_code_path, it)
+        else
+            while interpret(tab, args[1], attempt_code_path, actual_code_path, it)
+                if it == 0
+                    break
+                end
+                it -= 1
+                interpret(tab, args[2], attempt_code_path, actual_code_path, it)
+            end
         end
     elseif ex.head == :return
         interpret(tab, args[1], attempt_code_path, actual_code_path, it)
