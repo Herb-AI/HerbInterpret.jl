@@ -54,6 +54,12 @@ end
 
 angelic_condition_flag = Symbol("update_✝_angelic_path")
 
+@kwdef mutable struct InterpArgs
+    attempt_code_path::Union{CodePath,Nothing}
+    actual_code_path::Union{BitVector,Nothing}
+    limit_iterations::Int
+    is_breaking::Bool
+end
 
 """
     execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, T}, attempt_code_path::Union{CodePath, Nothing}, actual_code_path::Union{BitVector, Nothing}, 
@@ -84,11 +90,11 @@ function execute_on_input(
     input::Dict{Symbol,T},
     attempt_code_path::Union{CodePath,Nothing}=nothing,
     actual_code_path::Union{BitVector,Nothing}=nothing,
-    limit_iterations::Int=30,
+    limit_iterations::Int=90,
 )::Any where {T}
     # Add input variable values
     symbols = merge(tab, input)
-    return interpret(symbols, expr, attempt_code_path, actual_code_path, limit_iterations)
+    return interpret(symbols, expr, InterpArgs(attempt_code_path, actual_code_path, limit_iterations, false))
 end
 
 """
@@ -186,107 +192,112 @@ These exceptions have to be handled by the caller of this function.
 interpret(tab::SymbolTable, x::Any, _::Any...) = x
 interpret(tab::SymbolTable, s::Symbol, _::Any...) = tab[s]
 
-function interpret(tab::SymbolTable, ex::Expr, attempt_code_path::Union{CodePath,Nothing}=nothing, actual_code_path::Union{BitVector,Nothing}=nothing, it::Int=30)
+function interpret(tab::SymbolTable, ex::Expr, interp_args::InterpArgs)
     args = ex.args
     if ex.head == :call
         if ex.args[1] == Symbol(".&")
-            return (interpret(tab, args[2], attempt_code_path, actual_code_path, it) .& interpret(tab, args[3], attempt_code_path, actual_code_path, it))
+            return (interpret(tab, args[2], interp_args) .& interpret(tab, args[3], interp_args))
         elseif ex.args[1] == Symbol(".|")
-            return (interpret(tab, args[2], attempt_code_path, actual_code_path, it) .| interpret(tab, args[3], attempt_code_path, actual_code_path, it))
+            return (interpret(tab, args[2], interp_args) .| interpret(tab, args[3], interp_args))
         elseif ex.args[1] == Symbol(".==")
-            return (interpret(tab, args[2], attempt_code_path, actual_code_path, it) .== interpret(tab, args[3], attempt_code_path, actual_code_path, it))
+            return (interpret(tab, args[2], interp_args) .== interpret(tab, args[3], interp_args))
         elseif ex.args[1] == Symbol(".>=")
-            return (interpret(tab, args[2], attempt_code_path, actual_code_path, it) .>= interpret(tab, args[3], attempt_code_path, actual_code_path, it))
+            return (interpret(tab, args[2], interp_args) .>= interpret(tab, args[3], interp_args))
         elseif ex.args[1] == Symbol(".<=")
-            return (interpret(tab, args[2], attempt_code_path, actual_code_path, it) .<= interpret(tab, args[3], attempt_code_path, actual_code_path, it))
+            return (interpret(tab, args[2], interp_args) .<= interpret(tab, args[3], interp_args))
         elseif ex.args[1] == Symbol("<")
-            return (interpret(tab, args[2], attempt_code_path, actual_code_path, it) < interpret(tab, args[3], attempt_code_path, actual_code_path, it))
+            return (interpret(tab, args[2], interp_args) < interpret(tab, args[3], interp_args))
         else
             len = length(args)
             #unroll for performance and avoid excessive allocations
             if len == 1
                 return tab[args[1]]()
             elseif len == 2
-                return tab[args[1]](interpret(tab, args[2], attempt_code_path, actual_code_path, it))
+                return tab[args[1]](interpret(tab, args[2], interp_args))
             elseif len == 3
-                return tab[args[1]](interpret(tab, args[2], attempt_code_path, actual_code_path, it), interpret(tab, args[3], attempt_code_path, actual_code_path, it))
+                return tab[args[1]](interpret(tab, args[2], interp_args), interpret(tab, args[3], interp_args))
             elseif len == 4
                 return tab[args[1]](
-                    interpret(tab, args[2], attempt_code_path, actual_code_path, it),
-                    interpret(tab, args[3], attempt_code_path, actual_code_path, it),
-                    interpret(tab, args[4], attempt_code_path, actual_code_path, it))
+                    interpret(tab, args[2], interp_args),
+                    interpret(tab, args[3], interp_args),
+                    interpret(tab, args[4], interp_args))
             elseif len == 5
                 return tab[args[1]](
-                    interpret(tab, args[2], attempt_code_path, actual_code_path, it),
-                    interpret(tab, args[3], attempt_code_path, actual_code_path, it),
-                    interpret(tab, args[4], attempt_code_path, actual_code_path, it),
-                    interpret(tab, args[5], attempt_code_path, actual_code_path, it))
+                    interpret(tab, args[2], interp_args),
+                    interpret(tab, args[3], interp_args),
+                    interpret(tab, args[4], interp_args),
+                    interpret(tab, args[5], interp_args))
             elseif len == 6
                 return tab[args[1]](
-                    interpret(tab, args[2], attempt_code_path, actual_code_path, it),
-                    interpret(tab, args[3], attempt_code_path, actual_code_path, it),
-                    interpret(tab, args[4], attempt_code_path, actual_code_path, it),
-                    interpret(tab, args[5], attempt_code_path, actual_code_path, it),
-                    interpret(tab, args[6], attempt_code_path, actual_code_path, it))
+                    interpret(tab, args[2], interp_args),
+                    interpret(tab, args[3], interp_args),
+                    interpret(tab, args[4], interp_args),
+                    interpret(tab, args[5], interp_args),
+                    interpret(tab, args[6], interp_args))
             else
-                return tab[args[1]](interpret.(Ref(tab), args[2:end], Ref(attempt_code_path), Ref(actual_code_path), it)...)
+                return tab[args[1]](interpret.(Ref(tab), args[2:end], Ref(interp_args))...)
             end
         end
     elseif ex.head == :(.)
-        return Base.broadcast(Base.eval(args[1]), interpret(tab, args[2], attempt_code_path, actual_code_path, it)...)
+        return Base.broadcast(Base.eval(args[1]), interpret(tab, args[2], interp_args)...)
     elseif ex.head == :tuple
-        return tuple(interpret.(Ref(tab), args, Ref(attempt_code_path), Ref(actual_code_path), it)...)
+        return tuple(interpret.(Ref(tab), args, Ref(interp_args))...)
     elseif ex.head == :vect
-        return [interpret.(Ref(tab), args, Ref(attempt_code_path), Ref(actual_code_path), it)...]
+        return [interpret.(Ref(tab), args, Ref(interp_args))...]
     elseif ex.head == :||
-        return (interpret(tab, args[1], attempt_code_path, actual_code_path, it) || interpret(tab, args[2], attempt_code_path, actual_code_path, it))
+        return (interpret(tab, args[1], interp_args) || interpret(tab, args[2], interp_args))
     elseif ex.head == :&&
-        return (interpret(tab, args[1], attempt_code_path, actual_code_path, it) && interpret(tab, args[2], attempt_code_path, actual_code_path, it))
+        return (interpret(tab, args[1], interp_args) && interpret(tab, args[2], interp_args))
     elseif ex.head == :(=)
-        return (tab[args[1]] = interpret(tab, args[2], attempt_code_path, actual_code_path, it)) #assignments made to symboltable
+        return (tab[args[1]] = interpret(tab, args[2], interp_args)) #assignments made to symboltable
     elseif ex.head == :block
         result = nothing
         for x in args
-            result = interpret(tab, x, attempt_code_path, actual_code_path, it)
+            result = interpret(tab, x, interp_args)
         end
         return result
     elseif ex.head == :if
         cond = args[1]
-        if !isnothing(actual_code_path) && cond == angelic_condition_flag
-            if update_✝γ_path(attempt_code_path, actual_code_path)
-                return interpret(tab, args[2], attempt_code_path, actual_code_path, it)
-            else
-                return interpret(tab, args[3], attempt_code_path, actual_code_path, it)
+        if !isnothing(interp_args.actual_code_path) && cond == angelic_condition_flag
+            if update_✝γ_path(interp_args.attempt_code_path, interp_args.actual_code_path)
+                return interpret(tab, args[2], interp_args)
+            elseif length(args) > 2
+                return interpret(tab, args[3], interp_args)
             end
         else
-            if interpret(tab, args[1], attempt_code_path, actual_code_path, it)
-                return interpret(tab, args[2], attempt_code_path, actual_code_path, it)
-            else
-                return interpret(tab, args[3], attempt_code_path, actual_code_path, it)
+            if interpret(tab, args[1], interp_args)
+                return interpret(tab, args[2], interp_args)
+            elseif length(args) > 2
+                return interpret(tab, args[3], interp_args)
             end
         end
     elseif ex.head == :while
         cond = args[1]
-        if !isnothing(actual_code_path)  && cond == angelic_condition_flag
-            while update_✝γ_path(attempt_code_path, actual_code_path)
-                if it == 0
+        if !isnothing(interp_args.actual_code_path)  && cond == angelic_condition_flag
+            while update_✝γ_path(interp_args.attempt_code_path, interp_args.actual_code_path)
+                interp_args.limit_iterations -= 1
+                interpret(tab, args[2], interp_args)
+                if interp_args.limit_iterations <= 0 || interp_args.is_breaking
+                    interp_args.is_breaking = false
                     break
                 end
-                it -= 1
-                interpret(tab, args[2], attempt_code_path, actual_code_path, it)
             end
         else
-            while interpret(tab, args[1], attempt_code_path, actual_code_path, it)
-                if it == 0
+            while interpret(tab, args[1], interp_args)
+                interp_args.limit_iterations -= 1
+                interpret(tab, args[2], interp_args)
+                if interp_args.limit_iterations <= 0 || interp_args.is_breaking
+                    interp_args.is_breaking = false
                     break
                 end
-                it -= 1
-                interpret(tab, args[2], attempt_code_path, actual_code_path, it)
             end
         end
     elseif ex.head == :return
-        interpret(tab, args[1], attempt_code_path, actual_code_path, it)
+        interpret(tab, args[1], interp_args)
+    elseif ex.head == :break
+        breaking[] = true
     else
+        print(ex)
         error("Expression type not supported")
     end
 end
