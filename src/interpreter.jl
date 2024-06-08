@@ -295,7 +295,7 @@ function interpret(tab::SymbolTable, ex::Expr, interp_args::InterpArgs)
     elseif ex.head == :return
         interpret(tab, args[1], interp_args)
     elseif ex.head == :break
-        breaking[] = true
+        interp_args.is_breaking = true
     else
         print(ex)
         error("Expression type not supported")
