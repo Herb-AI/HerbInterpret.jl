@@ -245,7 +245,11 @@ function interpret(tab::SymbolTable, ex::Expr, interp_args::InterpArgs)
     elseif ex.head == :vect
         return [interpret.(Ref(tab), args, Ref(interp_args))...]
     elseif ex.head == :||
-        return (interpret(tab, args[1], interp_args) || interpret(tab, args[2], interp_args))
+        if !isnothing(interp_args.actual_code_path) && args[1] == angelic_condition_flag
+            return update_✝γ_path(interp_args.attempt_code_path, interp_args.actual_code_path) || interpret(tab, args[2], interp_args)
+        else
+            return (interpret(tab, args[1], interp_args) || interpret(tab, args[2], interp_args))
+        end
     elseif ex.head == :&&
         return (interpret(tab, args[1], interp_args) && interpret(tab, args[2], interp_args))
     elseif ex.head == :(=)
@@ -257,8 +261,7 @@ function interpret(tab::SymbolTable, ex::Expr, interp_args::InterpArgs)
         end
         return result
     elseif ex.head == :if
-        cond = args[1]
-        if !isnothing(interp_args.actual_code_path) && cond == angelic_condition_flag
+        if !isnothing(interp_args.actual_code_path) && args[1] == angelic_condition_flag
             if update_✝γ_path(interp_args.attempt_code_path, interp_args.actual_code_path)
                 return interpret(tab, args[2], interp_args)
             elseif length(args) > 2
@@ -272,8 +275,7 @@ function interpret(tab::SymbolTable, ex::Expr, interp_args::InterpArgs)
             end
         end
     elseif ex.head == :while
-        cond = args[1]
-        if !isnothing(interp_args.actual_code_path)  && cond == angelic_condition_flag
+        if !isnothing(interp_args.actual_code_path) && args[1] == angelic_condition_flag
             while update_✝γ_path(interp_args.attempt_code_path, interp_args.actual_code_path)
                 interp_args.limit_iterations -= 1
                 interpret(tab, args[2], interp_args)
