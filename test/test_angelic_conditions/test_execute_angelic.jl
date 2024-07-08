@@ -127,3 +127,12 @@ end
         @test apath == [true] # and not enter the if-statement afterwards
     end
 end
+
+@testset "angelic_evaluation" begin
+    p = RuleNode(15, [Hole([]), RuleNode(12), RuleNode(13, [RuleNode(12), RuleNode(2)])])
+    tab = SymbolTable(grammar)
+    angelic_conditions = Dict{UInt16,UInt8}()
+    angelic_conditions[15] = 1
+    res = execute_angelic_on_input(tab, p, grammar, Dict{Symbol, Any}(:x => 1), 2, RuleNode(16), 10, angelic_conditions)
+    @test res
+end
