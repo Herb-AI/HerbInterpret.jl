@@ -47,6 +47,13 @@ function test_examples(tab::SymbolTable, expr::Any, examples::Vector{IOExample})
     return true
 end
 
+"""
+    CodePath
+
+A mutable struct used to keep track of the code path taken during execution of control statements.
+The `code_path` field is a `BitVector` that stores the attempted code path. The `idx` field is
+to keep track of the current index in the `code_path` field.
+"""
 Base.@kwdef mutable struct CodePath
     code_path::BitVector
     idx::UInt8
