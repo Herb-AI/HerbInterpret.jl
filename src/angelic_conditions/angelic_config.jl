@@ -11,7 +11,7 @@ A configuration struct for angelic conditions. Includes both generation- and eva
 - `angelic_rulenode::Union{Nothing,RuleNode}`: The angelic rulenode. Used to replace angelic conditions/holes right before evaluation.
 
 """
-@kwdef mutable struct ConfigAngelic
+Base.@kwdef mutable struct ConfigAngelic
     max_time::Float16 = 0.1
     boolean_expr_max_depth::Int64 = 3
     max_execute_attempts::Int = 55

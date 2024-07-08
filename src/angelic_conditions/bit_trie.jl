@@ -7,13 +7,13 @@ This trie does not store values associated to the nodes, and the paths are built
 The trie is used to store code paths that have been traversed, and check if a given path is a prefix of any of the stored paths.
 
 """
-@kwdef mutable struct BitTrieNode
+Base.@kwdef mutable struct BitTrieNode
     left::Union{BitTrieNode,Nothing} = nothing
     right::Union{BitTrieNode,Nothing} = nothing
     is_leaf::Bool = false
 end
 
-@kwdef mutable struct BitTrie
+Base.@kwdef mutable struct BitTrie
     root::Union{BitTrieNode,Nothing} = BitTrieNode()
     size::Int = 0
 end

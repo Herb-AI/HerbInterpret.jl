@@ -47,14 +47,14 @@ function test_examples(tab::SymbolTable, expr::Any, examples::Vector{IOExample})
     return true
 end
 
-@kwdef mutable struct CodePath
+Base.@kwdef mutable struct CodePath
     code_path::BitVector
     idx::UInt8
 end
 
 angelic_condition_flag = Symbol("update_✝_angelic_path")
 
-@kwdef mutable struct InterpArgs
+Base.@kwdef mutable struct InterpArgs
     attempt_code_path::Union{CodePath,Nothing}
     actual_code_path::Union{BitVector,Nothing}
     limit_iterations::Int
