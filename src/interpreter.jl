@@ -35,7 +35,7 @@ function test_examples(tab::SymbolTable, expr::Any, examples::Vector{IOExample})
     depwarn("`test_examples` is deprecated and should no longer be used.", :test_examples)
 
     for example ∈ filter(e -> e isa IOExample, examples)
-        try 
+        try
             output = execute_on_input(tab, expr, example.in)
             if output ≠ execute_on_input(tab, expr, example.in)
                 return false
@@ -48,15 +48,41 @@ function test_examples(tab::SymbolTable, expr::Any, examples::Vector{IOExample})
 end
 
 """
-    execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, T})::Any where T
+    CodePath
+
+A mutable struct used to keep track of the code path taken during execution of control statements.
+The `code_path` field is a `BitVector` that stores the attempted code path. The `idx` field is
+to keep track of the current index in the `code_path` field.
+"""
+Base.@kwdef mutable struct CodePath
+    code_path::BitVector
+    idx::UInt8
+end
+
+angelic_condition_flag = Symbol("update_✝_angelic_path")
+
+Base.@kwdef mutable struct InterpArgs
+    attempt_code_path::Union{CodePath,Nothing}
+    actual_code_path::Union{BitVector,Nothing}
+    limit_iterations::Int
+    is_breaking::Bool
+end
+
+"""
+    execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, T}, attempt_code_path::Union{CodePath, Nothing}, actual_code_path::Union{BitVector, Nothing}, 
+        limit_iterations::Int)::Any where T
 
 Evaluates an expression `expr` within the context of a symbol table `tab` and a single input dictionary `input`. 
 The input dictionary keys should match the symbols used in the expression, and their values are used during the expression's evaluation.
+If provided, a code path should be attempted, and also recorded in the actual_code_path.
 
 # Arguments
 - `tab::SymbolTable`: A symbol table containing predefined symbols and their associated values or functions.
 - `expr::Any`: The expression to be evaluated. Can be any Julia expression that is valid within the context of the provided symbol table and input.
 - `input::Dict{Symbol, T}`: A dictionary where each key is a symbol used in the expression, and the value is the corresponding value to be used in the expression's evaluation. The type `T` can be any type.
+- `attempt_code_path::Union{CodePath, Nothing}`: The attempted code path. Can be `nothing` if no code path should be attempted
+- `actual_code_path::Union{BitVector, Nothing}`: The actual code path. Values from `attempt_code_path` are appended until it is empty, then only the `false` path is taken.
+- `limit_iterations::Int`: The maximum number of iterations allowed for the evaluation of the expression. Used to avoid infinite loops.
 
 # Returns
 - `Any`: The result of evaluating the expression with the given symbol table and input dictionary.
@@ -65,10 +91,17 @@ The input dictionary keys should match the symbols used in the expression, and t
     This function throws exceptions that are caused in the given expression. These exceptions have to be handled by the caller of this function.
 
 """
-function execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, T})::Any where T
+function execute_on_input(
+    tab::SymbolTable,
+    expr::Any,
+    input::Dict{Symbol,T},
+    attempt_code_path::Union{CodePath,Nothing}=nothing,
+    actual_code_path::Union{BitVector,Nothing}=nothing,
+    limit_iterations::Int=90,
+)::Any where {T}
     # Add input variable values
     symbols = merge(tab, input)
-    return interpret(symbols, expr)
+    return interpret(symbols, expr, InterpArgs(attempt_code_path, actual_code_path, limit_iterations, false))
 end
 
 """
@@ -84,7 +117,7 @@ Wrapper around [`execute_on_input`](@ref) to execute all inputs given as an arra
 # Returns
 - `Vector{<:Any}`: A vector containing the results of evaluating the expression for each input dictionary.
 """
-function execute_on_input(tab::SymbolTable, expr::Any, input::Vector{T})::Vector{<:Any} where T <: Dict{Symbol, <:Any}
+function execute_on_input(tab::SymbolTable, expr::Any, input::Vector{T})::Vector{<:Any} where {T<:Dict{Symbol,<:Any}}
     return [execute_on_input(tab, expr, example) for example in input]
 end
 
@@ -101,7 +134,7 @@ Converts a `RuleNode` program into an expression using a given `grammar`, then e
 # Returns
 - `Any`: The result of evaluating the generated expression with the given input dictionary.
 """
-function execute_on_input(grammar::AbstractGrammar, program::RuleNode, input::Dict{Symbol, T})::Any where T
+function execute_on_input(grammar::AbstractGrammar, program::RuleNode, input::Dict{Symbol,T})::Any where {T}
     expression = rulenode2expr(program, grammar)
     symboltable = SymbolTable(grammar)
     return execute_on_input(symboltable, expression, input)
@@ -120,7 +153,7 @@ Converts a `RuleNode` program into an expression using a given `grammar`, then e
 # Returns
 - `Vector{Any}`: A vector containing the results of evaluating the generated expression for each input dictionary.
 """
-function execute_on_input(grammar::AbstractGrammar, program::RuleNode, input::Vector{T})::Vector{Any} where T <: Dict{Symbol, <:Any}
+function execute_on_input(grammar::AbstractGrammar, program::RuleNode, input::Vector{T})::Vector{Any} where {T<:Dict{Symbol,<:Any}}
     expression = rulenode2expr(program, grammar)
     symboltable = SymbolTable(grammar)
     return execute_on_input(symboltable, expression, input)
@@ -163,68 +196,117 @@ interpret(tab, ex)
 WARNING: This function throws exceptions that are caused in the given expression.
 These exceptions have to be handled by the caller of this function.
 """
-interpret(tab::SymbolTable, x::Any) = x
-interpret(tab::SymbolTable, s::Symbol) = tab[s]
+interpret(tab::SymbolTable, x::Any, _::Any...) = x
+interpret(tab::SymbolTable, s::Symbol, _::Any...) = tab[s]
 
-function interpret(tab::SymbolTable, ex::Expr)
+function interpret(tab::SymbolTable, ex::Expr, interp_args::InterpArgs)
     args = ex.args
     if ex.head == :call
         if ex.args[1] == Symbol(".&")
-            return (interpret(tab, args[2]) .& interpret(tab, args[3]))
+            return (interpret(tab, args[2], interp_args) .& interpret(tab, args[3], interp_args))
         elseif ex.args[1] == Symbol(".|")
-            return (interpret(tab, args[2]) .| interpret(tab, args[3]))
+            return (interpret(tab, args[2], interp_args) .| interpret(tab, args[3], interp_args))
         elseif ex.args[1] == Symbol(".==")
-            return (interpret(tab, args[2]) .== interpret(tab, args[3]))
+            return (interpret(tab, args[2], interp_args) .== interpret(tab, args[3], interp_args))
         elseif ex.args[1] == Symbol(".>=")
-            return (interpret(tab, args[2]) .>= interpret(tab, args[3]))
+            return (interpret(tab, args[2], interp_args) .>= interpret(tab, args[3], interp_args))
         elseif ex.args[1] == Symbol(".<=")
-            return (interpret(tab, args[2]) .<= interpret(tab, args[3]))
+            return (interpret(tab, args[2], interp_args) .<= interpret(tab, args[3], interp_args))
+        elseif ex.args[1] == Symbol("<")
+            return (interpret(tab, args[2], interp_args) < interpret(tab, args[3], interp_args))
         else
             len = length(args)
             #unroll for performance and avoid excessive allocations
             if len == 1
                 return tab[args[1]]()
             elseif len == 2
-                return tab[args[1]](interpret(tab,args[2]))
+                return tab[args[1]](interpret(tab, args[2], interp_args))
             elseif len == 3
-                return tab[args[1]](interpret(tab,args[2]), interpret(tab,args[3]))
+                return tab[args[1]](interpret(tab, args[2], interp_args), interpret(tab, args[3], interp_args))
             elseif len == 4
-                return tab[args[1]](interpret(tab,args[2]), interpret(tab,args[3]), interpret(tab,args[4]))
+                return tab[args[1]](
+                    interpret(tab, args[2], interp_args),
+                    interpret(tab, args[3], interp_args),
+                    interpret(tab, args[4], interp_args))
             elseif len == 5
-                return tab[args[1]](interpret(tab,args[2]), interpret(tab,args[3]), interpret(tab,args[4]),
-                                       interpret(tab,args[5]))
+                return tab[args[1]](
+                    interpret(tab, args[2], interp_args),
+                    interpret(tab, args[3], interp_args),
+                    interpret(tab, args[4], interp_args),
+                    interpret(tab, args[5], interp_args))
             elseif len == 6
-                return tab[args[1]](interpret(tab,args[2]), interpret(tab,args[3]), interpret(tab,args[4]),
-                                       interpret(tab,args[5]), interpret(tab,args[6]))
+                return tab[args[1]](
+                    interpret(tab, args[2], interp_args),
+                    interpret(tab, args[3], interp_args),
+                    interpret(tab, args[4], interp_args),
+                    interpret(tab, args[5], interp_args),
+                    interpret(tab, args[6], interp_args))
             else
-                return tab[args[1]](interpret.(Ref(tab),args[2:end])...)
+                return tab[args[1]](interpret.(Ref(tab), args[2:end], Ref(interp_args))...)
             end
         end
     elseif ex.head == :(.)
-        return Base.broadcast(Base.eval(args[1]), interpret(tab, args[2])...)
+        return Base.broadcast(Base.eval(args[1]), interpret(tab, args[2], interp_args)...)
     elseif ex.head == :tuple
-        return tuple(interpret.(Ref(tab), args)...)
+        return tuple(interpret.(Ref(tab), args, Ref(interp_args))...)
     elseif ex.head == :vect
-        return [interpret.(Ref(tab), args)...]
+        return [interpret.(Ref(tab), args, Ref(interp_args))...]
     elseif ex.head == :||
-        return (interpret(tab, args[1]) || interpret(tab, args[2]))
+        if !isnothing(interp_args.actual_code_path) && args[1] == angelic_condition_flag
+            return update_✝γ_path(interp_args.attempt_code_path, interp_args.actual_code_path) || interpret(tab, args[2], interp_args)
+        else
+            return (interpret(tab, args[1], interp_args) || interpret(tab, args[2], interp_args))
+        end
     elseif ex.head == :&&
-        return (interpret(tab, args[1]) && interpret(tab, args[2]))
+        return (interpret(tab, args[1], interp_args) && interpret(tab, args[2], interp_args))
     elseif ex.head == :(=)
-        return (tab[args[1]] = interpret(tab, args[2])) #assignments made to symboltable
+        return (tab[args[1]] = interpret(tab, args[2], interp_args)) #assignments made to symboltable
     elseif ex.head == :block
         result = nothing
         for x in args
-            result = interpret(tab, x)
+            result = interpret(tab, x, interp_args)
         end
         return result
     elseif ex.head == :if
-        if interpret(tab, args[1])
-            return interpret(tab, args[2])
+        if !isnothing(interp_args.actual_code_path) && args[1] == angelic_condition_flag
+            if update_✝γ_path(interp_args.attempt_code_path, interp_args.actual_code_path)
+                return interpret(tab, args[2], interp_args)
+            elseif length(args) > 2
+                return interpret(tab, args[3], interp_args)
+            end
         else
-            return interpret(tab, args[3])
+            if interpret(tab, args[1], interp_args)
+                return interpret(tab, args[2], interp_args)
+            elseif length(args) > 2
+                return interpret(tab, args[3], interp_args)
+            end
         end
+    elseif ex.head == :while
+        if !isnothing(interp_args.actual_code_path) && args[1] == angelic_condition_flag
+            while update_✝γ_path(interp_args.attempt_code_path, interp_args.actual_code_path)
+                interp_args.limit_iterations -= 1
+                interpret(tab, args[2], interp_args)
+                if interp_args.limit_iterations <= 0 || interp_args.is_breaking
+                    interp_args.is_breaking = false
+                    break
+                end
+            end
+        else
+            while interpret(tab, args[1], interp_args)
+                interp_args.limit_iterations -= 1
+                interpret(tab, args[2], interp_args)
+                if interp_args.limit_iterations <= 0 || interp_args.is_breaking
+                    interp_args.is_breaking = false
+                    break
+                end
+            end
+        end
+    elseif ex.head == :return
+        interpret(tab, args[1], interp_args)
+    elseif ex.head == :break
+        interp_args.is_breaking = true
     else
+        print(ex)
         error("Expression type not supported")
     end
 end
@@ -240,9 +322,35 @@ function interpret(ex::Expr, M::Module=Main)
         Core.eval(M, ex)
     end
 end
-call_func(M::Module, f::Symbol) = getproperty(M,f)()
-call_func(M::Module, f::Symbol, x1) = getproperty(M,f)f(x1)
-call_func(M::Module, f::Symbol, x1, x2) = getproperty(M,f)(x1, x2)
-call_func(M::Module, f::Symbol, x1, x2, x3) = getproperty(M,f)(x1, x2, x3)
-call_func(M::Module, f::Symbol, x1, x2, x3, x4) = getproperty(M,f)(x1, x2, x3, x4)
-call_func(M::Module, f::Symbol, x1, x2, x3, x4, x5) = getproperty(M,f)(x1, x2, x3, x4, x5)
+call_func(M::Module, f::Symbol) = getproperty(M, f)()
+call_func(M::Module, f::Symbol, x1) = getproperty(M, f)f(x1)
+call_func(M::Module, f::Symbol, x1, x2) = getproperty(M, f)(x1, x2)
+call_func(M::Module, f::Symbol, x1, x2, x3) = getproperty(M, f)(x1, x2, x3)
+call_func(M::Module, f::Symbol, x1, x2, x3, x4) = getproperty(M, f)(x1, x2, x3, x4)
+call_func(M::Module, f::Symbol, x1, x2, x3, x4, x5) = getproperty(M, f)(x1, x2, x3, x4, x5)
+
+"""
+    update_✝γ_path(✝γ_code_path::CodePath, ✝γ_actual_code_path::BitVector)
+
+A helper function used to keep track of the taken code path during execution of control statements.
+
+# Arguments
+- `✝γ_code_path`: The `attempted` code path. Values are added until entire path is taken.
+- `✝γ_actual_code_path`: The actual code path - Values from `✝γ_code_path` are appended until it is empty, then only the `false` path is taken.
+
+# Returns
+The next path to be taken in this control statement - either the first value of `✝γ_code_path`, or `false`.
+
+"""
+function update_✝γ_path(✝γ_code_path::CodePath, ✝γ_actual_code_path::BitVector)::Bool
+    # If attempted flow already completed - append `false` until return
+    if length(✝γ_code_path.code_path) <= ✝γ_code_path.idx
+        push!(✝γ_actual_code_path, false)
+        return false
+    end
+    # Else take next and append to actual path
+    ✝γ_code_path.idx += 1
+    res = ✝γ_code_path.code_path[✝γ_code_path.idx]
+    push!(✝γ_actual_code_path, res)
+    res == 1
+end
