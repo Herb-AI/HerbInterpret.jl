@@ -12,8 +12,6 @@ include("angelic_conditions/bit_trie.jl")
 include("angelic_conditions/angelic_config.jl")
 include("angelic_conditions/execute_angelic.jl")
 
-include("running_test_utils.jl")
-
 export 
     SymbolTable,
     interpret,
