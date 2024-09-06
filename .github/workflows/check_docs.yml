@@ -27,16 +27,16 @@ jobs:
     - name: Try building documentation and run doctests
       run: |
         julia --project=docs -e '
-          using Documenter, HerbConstraints;
+          using Documenter, HerbInterpret;
           content = """
             ```@meta
-            CurrentModule = HerbConstraints
+            CurrentModule = HerbInterpret
             DocTestSetup = quote
-                using HerbConstraints
+                using HerbInterpret
             end
             ```
             ```@autodocs
-            Modules = [HerbConstraints]
+            Modules = [HerbInterpret]
             ```
           """
           mkpath("src/")
@@ -44,8 +44,8 @@ jobs:
             write(file, content)
           end
           makedocs(
-            sitename="HerbConstraints.jl",
-            modules=[HerbConstraints],
+            sitename="HerbInterpret.jl",
+            modules=[HerbInterpret],
             format=Documenter.HTML(),
             doctest=true,
             warnonly=[:missing_docs],
