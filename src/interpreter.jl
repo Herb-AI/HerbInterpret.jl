@@ -103,7 +103,7 @@ Converts a `RuleNode` program into an expression using a given `grammar`, then e
 """
 function execute_on_input(grammar::AbstractGrammar, program::RuleNode, input::Dict{Symbol, T})::Any where T
     expression = rulenode2expr(program, grammar)
-    symboltable = SymbolTable(grammar)
+    symboltable = grammar2symboltable(grammar)
     return execute_on_input(symboltable, expression, input)
 end
 
@@ -122,7 +122,7 @@ Converts a `RuleNode` program into an expression using a given `grammar`, then e
 """
 function execute_on_input(grammar::AbstractGrammar, program::RuleNode, input::Vector{T})::Vector{Any} where T <: Dict{Symbol, <:Any}
     expression = rulenode2expr(program, grammar)
-    symboltable = SymbolTable(grammar)
+    symboltable = grammar2symboltable(grammar)
     return execute_on_input(symboltable, expression, input)
 end
 
