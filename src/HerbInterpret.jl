@@ -11,5 +11,4 @@ export
     interpret,
 
     execute_on_input
-
 end # module HerbInterpret
