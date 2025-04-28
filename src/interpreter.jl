@@ -1,52 +1,3 @@
-using Base: depwarn
-"""
-    test_all_examples(tab::SymbolTable, expr::Any, examples::Vector{IOExample})::Vector{Bool}
-
-!!! warning 
-    This function is deprecated. Please use [`execute_on_input`](@ref) instead.
-
-Runs the interpreter on all examples with the given input table and expression. 
-The symbol table defines everything (functions, symbols) that are not input variables to the program to be synthesised.
-Returns a list of true/false values indicating if the expression satisfies the corresponding example.
-WARNING: This function throws exceptions that are caused in the given expression.
-These exceptions have to be handled by the caller of this function.
-"""
-function test_all_examples(tab::SymbolTable, expr::Any, examples::Vector{IOExample})::Vector{Bool}
-    depwarn("`test_all_examples` is deprecated and should no longer be used.", :test_all_examples)
-
-    outcomes = Vector{Bool}(undef, length(examples))
-    for example ∈ filter(e -> e isa IOExample, examples)
-        push!(outcomes, example.out == execute_on_input(tab, expr, example.in))
-    end
-    return outcomes
-end
-
-"""
-    test_examples(tab::SymbolTable, expr::Any, examples::Vector{IOExample})::Bool
-
-!!! warning 
-    This function is deprecated. Please use [`execute_on_input`](@ref) instead.
-
-Evaluates all examples and returns true iff all examples pass.
-Shortcircuits as soon as an example is found for which the program doesn't work. 
-Returns false if one of the examples produces an error.
-"""
-function test_examples(tab::SymbolTable, expr::Any, examples::Vector{IOExample})::Bool
-    depwarn("`test_examples` is deprecated and should no longer be used.", :test_examples)
-
-    for example ∈ filter(e -> e isa IOExample, examples)
-        try 
-            output = execute_on_input(tab, expr, example.in)
-            if output ≠ execute_on_input(tab, expr, example.in)
-                return false
-            end
-        catch
-            return false
-        end
-    end
-    return true
-end
-
 """
     execute_on_input(tab::SymbolTable, expr::Any, input::Dict{Symbol, T})::Any where T
 
@@ -240,9 +191,4 @@ function interpret(ex::Expr, M::Module=Main)
         Core.eval(M, ex)
     end
 end
-call_func(M::Module, f::Symbol) = getproperty(M,f)()
-call_func(M::Module, f::Symbol, x1) = getproperty(M,f)f(x1)
-call_func(M::Module, f::Symbol, x1, x2) = getproperty(M,f)(x1, x2)
-call_func(M::Module, f::Symbol, x1, x2, x3) = getproperty(M,f)(x1, x2, x3)
-call_func(M::Module, f::Symbol, x1, x2, x3, x4) = getproperty(M,f)(x1, x2, x3, x4)
-call_func(M::Module, f::Symbol, x1, x2, x3, x4, x5) = getproperty(M,f)(x1, x2, x3, x4, x5)
+call_func(M::Module, f::Symbol, x...) = getproperty(M,f)(x...)
