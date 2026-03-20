@@ -7,6 +7,8 @@ using HerbSpecification
 include("interpreter.jl")
 include("make_interpret.jl")
 
+function unparse_rn end
+
 export 
     SymbolTable,
     interpret,
