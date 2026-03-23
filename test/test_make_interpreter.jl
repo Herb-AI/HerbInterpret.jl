@@ -10,6 +10,14 @@ module LocalStringDSL
     concat_cvc(a::String, b::String) = a * b
 end
 
+# Module for testing correct reference to a value
+module LocalReferenceDSL
+    using HerbCore
+    using RuntimeGeneratedFunctions
+    RuntimeGeneratedFunctions.init(LocalReferenceDSL)
+    const SECRET = 42
+end
+
 # Simplest stateful grammar
 module LocalStateDSL
     using HerbCore
@@ -21,6 +29,7 @@ module LocalStateDSL
     end
 
     inc(st::St) = St(st.x + 1)
+    sum(st1::St, st2::St) = St(st1.x + st2.x)
     iseven(st::St) = Base.iseven(st.x)
 end
 
@@ -130,6 +139,37 @@ end
         end
     end
 
+    @testset "Test complex pure grammar" begin
+        g = @cfgrammar begin
+            Start = [Start, Start] # Built-in data structure evaluation
+            Start = Number # Other rule on RHS
+            Number = (x >= 0 ? x : -x) # absolute value on input :x
+            Number = Number + Number
+            Number = x
+            Number = 1
+        end
+
+        # Compile once
+        interpret_custom = HerbInterpret.make_interpreter(g; input_symbols=[:x])
+
+        positive_input = Dict{Symbol,Any}(:x => 2)
+        negative_input = Dict{Symbol,Any}(:x => -2)
+
+        # Simple conditional x >= 0 ? x : -x
+        @test interpret_custom(@rulenode(3), positive_input) == 2
+        @test interpret_custom(@rulenode(3), negative_input) == 2
+
+        # Rule alias on RHS: Start = Number etc.
+        @test interpret_custom(@rulenode(2{6}), positive_input) == 1
+
+        # Vector evaluation
+        @test interpret_custom(@rulenode(1{5,6}), positive_input) == [2, 1]
+
+        # Composite example
+        @test interpret_custom(@rulenode(1{3,2{5}}), negative_input) == [2, -2]
+
+    end
+
     @testset "Interpreter uses correct operators from target module" begin
         # Conflicting operator in caller module: must NOT be used
         concat_cvc(a::String, b::String) = a * "|" * b
@@ -159,6 +199,27 @@ end
 
         # Prove caller's concat differs (and is not used)
         @test concat_cvc("X", "A") == "X|A"
+    end
+
+    @testset "Interpreter uses correct references from target module" begin
+        # Conflicting reference in caller module: must NOT be used
+        SECRET = 41
+
+        g = @cfgrammar begin
+            Number = SECRET
+        end
+
+        # Compile once, but resolve the reference to constant in LocalReferenceDSL
+        interpret_reference = HerbInterpret.make_interpreter(
+            g;
+            input_symbols=nothing,
+            target_module=LocalReferenceDSL,
+        )
+
+        @test interpret_reference(@rulenode(1), Dict{Symbol, Any}()) == 42
+
+        # Prove caller's SECRET differs (and is not used)
+        @test SECRET == 41
     end
 
     @testset "Stateful interpreter generation" begin
@@ -198,6 +259,46 @@ end
             outs = interp(prog_two_incs, [LocalStateDSL.St(0), LocalStateDSL.St(10)])
             @test outs == [LocalStateDSL.St(2), LocalStateDSL.St(12)]
         end
+
+        @testset "Call with non-terminal arguments and ignored state" begin
+            g = @cfgrammar begin
+                Number = Number + Number
+                Number = |(1:2) # Terminal rules ignoring the state
+            end
+
+            # Build interpreter object
+            interp = HerbInterpret.make_stateful_interpreter(g)
+
+            # 1 + 2 == 3
+            @test interp(@rulenode(1{2,3}), nothing) == 3
+            # state does not change the result based only on constant terminals
+            @test interp(@rulenode(1{2,3}), 42) == 3
+        end
+
+
+        @testset "No side-effects on call with non-terminal arguments" begin
+            g = @cfgrammar begin
+                Number = sum(Number, Number)
+                Number = inc()
+            end
+
+            interp = HerbInterpret.make_stateful_interpreter(
+                g;
+                target_module = LocalStateDSL,
+                cache_module = @__MODULE__,
+            )
+
+            # Program: sum(inc(), inc()) starting from x=0 => x=2
+            # The state change in the evaluation of the first non-terminal
+            # does not influence the evaluation of the second non-terminal
+            prog_sum_two_incs = @rulenode(1{2,2})
+
+            st0 = LocalStateDSL.St(0)
+            out = interp(prog_sum_two_incs, st0)
+            @test out == LocalStateDSL.St(2)
+        end
+
+
 
         @testset "IF semantics in external target module" begin
             # Build interpreter from grammar that lives in LocalStateDSL2
