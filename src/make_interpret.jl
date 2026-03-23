@@ -112,7 +112,8 @@ function build_match_cases(
             end
 
         else
-            rhs_code = rhs_rule
+            nxt = Ref(1)
+            rhs_code = emit_eval(rhs_rule, nxt) # Call emit_eval anyway for fallback
         end
 
         push!(branches, :( r == $(ind) && return $rhs_code ))
