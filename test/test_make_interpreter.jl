@@ -70,6 +70,15 @@ module LocalStateDSL3
     end
 end
 
+module SafeDiv
+    using HerbCore
+    using HerbGrammar
+    using RuntimeGeneratedFunctions
+    RuntimeGeneratedFunctions.init(SafeDiv)
+
+    safe_div(a, b) = b == 0 ? nothing : a / b
+end
+
 
 @testset verbose=true "Test make_interpreter" begin
     @testset "Test base functionality" begin
@@ -253,5 +262,28 @@ end
             outs = interp3(prog_while, [LocalStateDSL3.St(0), LocalStateDSL3.St(1), LocalStateDSL3.St(3)])
             @test outs == [LocalStateDSL3.St(3), LocalStateDSL3.St(3), LocalStateDSL3.St(3)]
         end
+    end
+
+    @testset "Functions returning nothing" begin
+        g = @cfgrammar begin
+            Number = |(1:2)
+            Number = x
+            Number = Number + Number
+            Number = Number * Number
+            Number = Number + 1
+            Number = x * 2
+            Number = safe_div(Number, Number)
+        end
+
+        # Compile once
+        interpret_custom = HerbInterpret.make_interpreter(g; input_symbols=[:x], target_module=SafeDiv)
+
+
+        rn = @rulenode(4{1,8{2,3}})  # 1 + 2 / x
+        input = x -> Dict{Symbol,Any}(:x => x)
+
+        @test interpret_custom(rn, input(2)) == 2
+        @test interpret_custom(rn, input(1)) == 3
+        @test isnothing(interpret_custom(rn, input(0)))
     end
 end

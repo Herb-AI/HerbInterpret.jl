@@ -43,8 +43,8 @@ function build_match_cases(
 )
     input_set = input_symbols === nothing ? nothing : Set(input_symbols)
 
-    # recurse on child i as: self(self, c[i], input)
-    recur(i) = :( self(self, c[$i], input) )
+    # recurse on child i as: c[i]
+    recur(i) = :( c[$i] )
 
     # Emit code to evaluate a rule RHS, consuming children c[i] for nonterminals.
     function emit_eval(x, next_child::Base.RefValue{Int})
@@ -202,7 +202,8 @@ function make_interpreter(grammar::AbstractGrammar;
     # Constructs an anonymous function with an extra self arg for recursion.
     ex = :(function (self, prog, input)
         r = HerbCore.get_rule(prog)
-        c = HerbCore.get_children(prog)
+        c = [self(self, child, input) for child in get_children(prog)]
+        any(isnothing, c) && return nothing
         $cascade
     end)
     Base.remove_linenums!(ex)
