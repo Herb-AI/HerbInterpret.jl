@@ -133,13 +133,13 @@ end
 
 # Single input
 function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode,
-                                   input::AbstractDict{Symbol,Any})
+                                   input::AbstractDict{Symbol,<:Any})
     return gi.core(gi.core, prog, input)
 end
 
 # Vector of inputs
 function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode,
-                                   inputs::AbstractVector{<:AbstractDict{Symbol,Any}})
+                                   inputs::AbstractVector{<:AbstractDict{Symbol,<:Any}})
     return (gi.core).((gi.core,), (prog,), inputs)   # broadcasts (self, prog, input)
 end
 
@@ -165,9 +165,9 @@ The returned value is a callable `GeneratedInterpreter` (a small wrapper around 
 `RuntimeGeneratedFunctions.RuntimeGeneratedFunction`) that can be applied to:
 
 - a single input dictionary:
-  `interp(prog, input::AbstractDict{Symbol,Any})`
+  `interp(prog, input::AbstractDict{Symbol,<:Any})`
 - a vector of input dictionaries:
-  `interp(prog, inputs::AbstractVector{<:AbstractDict{Symbol,Any}})`
+  `interp(prog, inputs::AbstractVector{<:AbstractDict{Symbol,<:Any}})`
 - a single `HerbSpecification.IOExample`:
   `interp(prog, ex::IOExample)` (uses `ex.in`)
 - a vector of `IOExample`s:
