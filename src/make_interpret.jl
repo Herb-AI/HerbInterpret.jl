@@ -126,6 +126,11 @@ struct GeneratedInterpreter{F}
     core::F
 end
 
+# No input
+function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode)
+    return gi.core(gi.core, prog, nothing)
+end
+
 # Single input
 function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode,
                                    input::AbstractDict{Symbol,Any})
