@@ -1,9 +1,22 @@
+name = "Benchmarks"
+uuid = "6ee5f8fb-11dd-42bf-93c4-422a4e5be4dc"
+
 [deps]
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 HerbBenchmarks = "eadf8b74-d38a-4b1a-a063-8d36e493d376"
+HerbConstraints = "1fa96474-3206-4513-b4fa-23913f296dfc"
 HerbCore = "2b23ba43-8213-43cb-b5ea-38c12b45bd45"
 HerbGrammar = "4ef9e186-2fe5-4b24-8de7-9f7291f24af7"
+HerbInterpret = "5bbddadd-02c5-4713-84b8-97364418cca7"
 HerbSearch = "3008d8e8-f9aa-438a-92ed-26e9c7b4829f"
+Profile = "9abbd945-dff8-562f-b5e8-e1ebf5ef1b79"
+ProfileView = "c46f51b8-102a-5cf2-8d2c-8597cb0e0da7"
+RuntimeGeneratedFunctions = "7e49a35a-f44a-4d26-94aa-eba1b4ca6b47"
 
 [sources]
-HerbBenchmarks = {url = "https://github.com/Herb-AI/HerbBenchmarks.jl", rev = "e8cd880"}
+HerbBenchmarks = {rev = "10f07530c03bd5510f636aa5aa06b66e69ad994b", url = "https://github.com/Herb-AI/HerbBenchmarks.jl"}
+
+[compat]
+HerbBenchmarks = "0.2.3"
+Profile = "1.11.0"
+ProfileView = "1.10.3"
