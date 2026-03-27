@@ -1,4 +1,4 @@
-@testset verbose = true "Interpret Function Tests" begin
+@testitem "Interpret Function Tests" begin
     @testset "Basic Interpretations on Arithmetic Operators" begin
         tab = Dict{Symbol,Any}(:x => 5, :y => 3, :+ => +, :* => *)
         @testset "Interpreting a single variable" begin
@@ -18,12 +18,12 @@
     @testset "Advanced Interpretations" begin
         tab = Dict{Symbol,Any}(
             :x => 2, :y => 4, :+ => +, :- => -, :* => *, :/ => /
-)
+        )
         @testset "Interpreting compound expression (x * y) + y" begin
-            @test interpret(tab, :(x * y + y)) == 12    
+            @test interpret(tab, :(x * y + y)) == 12
         end
         @testset "Interpreting compound expression x / y + (y * x)" begin
-            @test interpret(tab, :(( x / y ) + y * x)) == 8.5  
+            @test interpret(tab, :((x / y) + y * x)) == 8.5
         end
     end
 
@@ -42,7 +42,7 @@
         tab = Dict{Symbol,Any}(:x => "hello", :+ => +)
 
         @testset "Interpreting invalid expressions" begin
-            @test_throws Exception interpret(tab, :(x + 2)) 
+            @test_throws Exception interpret(tab, :(x + 2))
         end
     end
 end
