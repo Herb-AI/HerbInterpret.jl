@@ -245,11 +245,9 @@ end
     make_interpreter(grammar::AbstractGrammar; input_symbols::Union{Nothing,AbstractVector{Symbol}} = nothing, target_module::Module = @__MODULE__, cache_module::Module = HerbInterpret)
 
 
-Construct a fast, *runtime-generated* interpreter for programs represented as
-`HerbCore.AbstractRuleNode`s.
+Constructs a fast, runtime-generated interpreter for programs represented as `HerbCore.AbstractRuleNode`s.
 
-The returned value is a callable `GeneratedInterpreter` (a small wrapper around a
-`RuntimeGeneratedFunctions.RuntimeGeneratedFunction`) that can be applied to:
+The returned value is a callable `GeneratedInterpreter` (a small wrapper around a `RuntimeGeneratedFunctions.RuntimeGeneratedFunction`) that can be applied to:
 
 - a single input dictionary:
   `interp(prog, input::AbstractDict{Symbol,Any})`
@@ -267,11 +265,11 @@ The returned value is a callable `GeneratedInterpreter` (a small wrapper around 
 
 ## Keyword arguments
 
-- `input_symbols`: Optional list of symbols that should be interpreted as *inputs*.  If provided, terminals matching these symbols (and any symbol following the `_arg_` convention) are read from the `input` dict.
+- `input_symbols`: Optional list of symbols that should be interpreted as inputs.  If provided, terminals matching these symbols (and any symbol following the `_arg_X` convention) are read from the `input` dict.
 
 - `target_module`: Module in which operator/function symbols appearing in the grammar are resolved. This is important when the grammar uses domain-specific primitives (e.g. `concat_cvc`, `substr_cvc`) that are defined in a benchmark module rather than in the caller’s module.
 
-- `cache_module`: Module used by `RuntimeGeneratedFunctions.jl` to store its internal cache. 
+- `cache_module`: Module used by `RuntimeGeneratedFunctions.jl` to store its internal cachen. 
 """
 function make_interpreter(grammar::AbstractGrammar;
     input_symbols::Union{Nothing,AbstractVector{Symbol}} = nothing,
