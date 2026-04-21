@@ -151,7 +151,7 @@ end
 function (gi::GeneratedOutputInterpreter)(rule::Int,
                                    children_outputs::AbstractVector{<:AbstractVector{<:Any}},
                                    inputs::AbstractVector{<:AbstractDict{Symbol,Any}})
-    return (gi.core).((gi.core,), (rule,), children_outputs, inputs)   # broadcasts (self, prog, input)
+    return [gi.core(gi.core, rule, [outputs[index] for outputs in children_outputs], input) for (index, input) in enumerate(inputs)]
 end
 
 function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode,
@@ -173,11 +173,7 @@ end
 function (gi::GeneratedOutputInterpreter)(rule::Int,
                                    children_outputs::AbstractVector{<:AbstractVector{<:Any}},
                                    exs::AbstractVector{<:HerbSpecification.IOExample})
-    if isempty(children_outputs)
-        return [gi(rule, [], ex) for ex in exs]
-    else
-        return [gi(rule, outputs, ex) for (outputs, ex) in zip(children_outputs, exs)]
-    end
+    return [gi(rule, [outputs[index] for outputs in children_outputs], ex) for (index, ex) in enumerate(exs)]
 end
 
 #

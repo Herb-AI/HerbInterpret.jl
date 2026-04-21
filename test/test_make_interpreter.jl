@@ -316,13 +316,13 @@ end
                 Dict{Symbol,Any}(:x => 1),
                 Dict{Symbol,Any}(:x => 3),
             ]
-            @test interpret_custom(1, [[],[]], inputs) == [1,1]
-            @test interpret_custom(2, [[],[]], inputs) == [2,2]
-            @test interpret_custom(3, [[],[]], inputs) == [1,3]
-            @test interpret_custom(4, [[1,2], [3,4]], inputs) == [3,7]
-            @test interpret_custom(5, [[1,2], [3,4]], inputs) == [2,12]
-            @test interpret_custom(6, [[1],[2]], inputs) == [2,3]
-            @test interpret_custom(7, [[],[]], inputs) == [2,6]
+            @test interpret_custom(1, Vector[], inputs) == [1,1]
+            @test interpret_custom(2, Vector[], inputs) == [2,2]
+            @test interpret_custom(3, Vector[], inputs) == [1,3]
+            @test interpret_custom(4, [[1,2], [3,4]], inputs) == [4,6]
+            @test interpret_custom(5, [[1,2], [3,4]], inputs) == [3,8]
+            @test interpret_custom(6, [[1,2]], inputs) == [2,3]
+            @test interpret_custom(7, Vector[], inputs) == [2,6]
         end
 
         @testset "Single IOExample" begin
@@ -341,17 +341,13 @@ end
                 HerbSpecification.IOExample(Dict{Symbol,Any}(:x => 1), nothing),
                 HerbSpecification.IOExample(Dict{Symbol,Any}(:x => 3), nothing),
             ]
-            @test interpret_custom(1, [[],[]], exs) == [1,1]
             @test interpret_custom(1, Vector[], exs) == [1,1]
-            @test interpret_custom(2, [[],[]], exs) == [2,2]
             @test interpret_custom(2, Vector[], exs) == [2,2]
-            @test interpret_custom(3, [[],[]], exs) == [1,3]
-            @test interpret_custom(3, Vector[], exs) == [1,3]
-            @test interpret_custom(4, [[1,2], [3,4]], exs) == [3,7]
-            @test interpret_custom(5, [[1,2], [3,4]], exs) == [2,12]
-            @test interpret_custom(6, [[1],[2]], exs) == [2,3]
-            @test interpret_custom(7, [[],[]], exs) == [2,6]
-            @test interpret_custom(7, Vector[], exs) == [2,6]
+            @test interpret_custom(3, Vector[], exs) == [1,3] #
+            @test interpret_custom(4, [[1,2], [3,4]], exs) == [4,6]
+            @test interpret_custom(5, [[1,2], [3,4]], exs) == [3,8]
+            @test interpret_custom(6, [[1,2]], exs) == [2,3]
+            @test interpret_custom(7, Vector[], exs) == [2,6] #
         end
     end
 end
