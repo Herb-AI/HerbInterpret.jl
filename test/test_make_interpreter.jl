@@ -286,4 +286,68 @@ end
         @test interpret_custom(rn, input(1)) == 3
         @test isnothing(interpret_custom(rn, input(0)))
     end
+
+    @testset "Test make_output_interpreter" begin
+        g = @cfgrammar begin
+            Number = |(1:2)             # 1, 2
+            Number = x                  # 3
+            Number = Number + Number    # 4
+            Number = Number * Number    # 5
+            Number = Number + 1         # 6
+            Number = x * 2              # 7
+        end
+
+        # Compile once
+        interpret_custom = HerbInterpret.make_output_interpreter(g; input_symbols=[:x])
+
+        @testset "Single input dict" begin
+            input = Dict{Symbol,Any}(:x => 5)
+            @test interpret_custom(1, [], input) == 1
+            @test interpret_custom(2, [], input) == 2
+            @test interpret_custom(3, [], input) == 5
+            @test interpret_custom(4, [1, 2], input) == 3
+            @test interpret_custom(5, [1, 2], input) == 2
+            @test interpret_custom(6, [1], input) == 2
+            @test interpret_custom(7, [], input) == 10
+        end
+
+        @testset "Vector of input dicts" begin
+            inputs = [
+                Dict{Symbol,Any}(:x => 1),
+                Dict{Symbol,Any}(:x => 3),
+            ]
+            @test interpret_custom(1, [[],[]], inputs) == [1,1]
+            @test interpret_custom(2, [[],[]], inputs) == [2,2]
+            @test interpret_custom(3, [[],[]], inputs) == [1,3]
+            @test interpret_custom(4, [[1,2], [3,4]], inputs) == [3,7]
+            @test interpret_custom(5, [[1,2], [3,4]], inputs) == [2,12]
+            @test interpret_custom(6, [[1],[2]], inputs) == [2,3]
+            @test interpret_custom(7, [[],[]], inputs) == [2,6]
+        end
+
+        @testset "Single IOExample" begin
+            ex = HerbSpecification.IOExample(Dict{Symbol,Any}(:x => 5), nothing)
+            @test interpret_custom(1, [], ex) == 1
+            @test interpret_custom(2, [], ex) == 2
+            @test interpret_custom(3, [], ex) == 5
+            @test interpret_custom(4, [1, 2], ex) == 3
+            @test interpret_custom(5, [1, 2], ex) == 2
+            @test interpret_custom(6, [1], ex) == 2
+            @test interpret_custom(7, [], ex) == 10
+        end
+
+        @testset "Vector of IOExamples" begin
+            exs = [
+                HerbSpecification.IOExample(Dict{Symbol,Any}(:x => 1), nothing),
+                HerbSpecification.IOExample(Dict{Symbol,Any}(:x => 3), nothing),
+            ]
+            @test interpret_custom(1, [[],[]], exs) == [1,1]
+            @test interpret_custom(2, [[],[]], exs) == [2,2]
+            @test interpret_custom(3, [[],[]], exs) == [1,3]
+            @test interpret_custom(4, [[1,2], [3,4]], exs) == [3,7]
+            @test interpret_custom(5, [[1,2], [3,4]], exs) == [2,12]
+            @test interpret_custom(6, [[1],[2]], exs) == [2,3]
+            @test interpret_custom(7, [[],[]], exs) == [2,6]
+        end
+    end
 end

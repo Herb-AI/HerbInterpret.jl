@@ -126,10 +126,20 @@ struct GeneratedInterpreter{F}
     core::F
 end
 
+struct GeneratedOutputInterpreter{F}
+    core::F
+end
+
 # Single input
 function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode,
                                    input::AbstractDict{Symbol,Any})
     return gi.core(gi.core, prog, input)
+end
+
+function (gi::GeneratedOutputInterpreter)(rule::Int,
+                                   children_outputs::AbstractVector{<:Any},
+                                   input::AbstractDict{Symbol,Any})
+    return gi.core(gi.core, rule, children_outputs, input)
 end
 
 # Vector of inputs
@@ -138,14 +148,32 @@ function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode,
     return (gi.core).((gi.core,), (prog,), inputs)   # broadcasts (self, prog, input)
 end
 
+function (gi::GeneratedOutputInterpreter)(rule::Int,
+                                   children_outputs::AbstractVector{<:AbstractVector{<:Any}},
+                                   inputs::AbstractVector{<:AbstractDict{Symbol,Any}})
+    return (gi.core).((gi.core,), (rule,), children_outputs, inputs)   # broadcasts (self, prog, input)
+end
+
 function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode,
                                    ex::HerbSpecification.IOExample)
     return gi(prog, ex.in)
 end
 
+function (gi::GeneratedOutputInterpreter)(rule::Int,
+                                   children_outputs::AbstractVector{<:Any},
+                                   ex::HerbSpecification.IOExample)
+    return gi(rule, children_outputs, ex.in)
+end
+
 function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode,
                                    exs::AbstractVector{<:HerbSpecification.IOExample})
     return [gi(prog, ex) for ex in exs]
+end
+
+function (gi::GeneratedOutputInterpreter)(rule::Int,
+                                   children_outputs::AbstractVector{<:AbstractVector{<:Any}},
+                                   exs::AbstractVector{<:HerbSpecification.IOExample})
+    return [gi(rule, outputs, ex) for (outputs, ex) in zip(children_outputs, exs)]
 end
 
 
@@ -211,6 +239,39 @@ function make_interpreter(grammar::AbstractGrammar;
     # Call RuntimeGeneratedFunction on this, so we can directly use it
     core = RuntimeGeneratedFunctions.RuntimeGeneratedFunction(cache_module, target_module, ex)
     return GeneratedInterpreter(core)
+end
+
+
+function make_output_interpreter(grammar::AbstractGrammar;
+    input_symbols::Union{Nothing,AbstractVector{Symbol}} = nothing,
+    target_module::Module = @__MODULE__,
+    cache_module::Module = HerbInterpret
+)
+    # ensure the cache exists in the chosen cache module
+    RuntimeGeneratedFunctions.init(cache_module)
+
+    # build if-then-else statements to evaluate the expressions
+    branches = build_match_cases(grammar;
+        target_module = target_module,
+        input_symbols = input_symbols
+    )
+
+    # Add error for non-existent indices
+    cascade = Expr(:block, branches..., :(error("No matching rule index: ", r)))
+
+    # Bit of meta-programming magic:
+    # Constructs an anonymous function with an extra self arg for recursion.
+    ex = :(function (self, rule, children_outputs, input)
+        r = rule
+        c = children_outputs
+        any(isnothing, c) && return nothing
+        $cascade
+    end)
+    Base.remove_linenums!(ex)
+
+    # Call RuntimeGeneratedFunction on this, so we can directly use it
+    core = RuntimeGeneratedFunctions.RuntimeGeneratedFunction(cache_module, target_module, ex)
+    return GeneratedOutputInterpreter(core)
 end
 
 
