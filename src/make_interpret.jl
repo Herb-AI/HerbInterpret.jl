@@ -176,6 +176,13 @@ function (gi::GeneratedOutputInterpreter)(rule::Int,
     return [gi(rule, outputs, ex) for (outputs, ex) in zip(children_outputs, exs)]
 end
 
+function (gi::GeneratedOutputInterpreter)(rule::Int,
+                                   children_outputs::AbstractVector{<:Any},
+                                   exs::AbstractVector{<:HerbSpecification.IOExample})
+    @assert isempty(children_outputs)
+    return [gi(rule, [], ex) for ex in exs]
+end
+
 
 """
     make_interpreter(grammar::AbstractGrammar; input_symbols::Union{Nothing,AbstractVector{Symbol}} = nothing, target_module::Module = @__MODULE__, cache_module::Module = HerbInterpret)
