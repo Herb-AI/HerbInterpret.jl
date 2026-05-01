@@ -1,16 +1,16 @@
-module TestModule
-    export add, mul, greet, no_arg
+@testitem "Testing call_func" begin
+    using HerbInterpret: call_func
+    module TestModule
+        export add, mul, greet, no_arg
 
-    add(x, y) = x + y
+        add(x, y) = x + y
 
-    mul(x, y, z) = x * y * z
+        mul(x, y, z) = x * y * z
 
-    greet(name, age) = "Hello, $name ! You are $age years old."
+        greet(name, age) = "Hello, $name ! You are $age years old."
 
-    no_arg() = "No arguments!"
-end
-
-@testset "Testing call_func" begin
+        no_arg() = "No arguments!"
+    end
     @testset "No argument function" begin
         @test call_func(TestModule, :no_arg) == "No arguments!"
     end

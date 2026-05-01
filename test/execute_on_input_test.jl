@@ -1,19 +1,18 @@
-function create_dummy_grammar()
-    g = @cfgrammar begin
-       Number = |(1:2)
-       Number = x
-       Number = Number + Number
-       Number = Number * Number
+@testitem "Execute on input" begin
+    using HerbGrammar, HerbCore
+    function create_dummy_grammar()
+        g = @cfgrammar begin
+           Number = |(1:2)
+           Number = x
+           Number = Number + Number
+           Number = Number * Number
+        end
+        return g
     end
-    return g
-end
 
-function create_dummy_rulenode()
-    return @rulenode 4{3,1}
-end
-
-
-@testset verbose=true "Execute on input" begin
+    function create_dummy_rulenode()
+        return @rulenode 4{3,1}
+    end
     @testset verbose=true "With SymbolTable and Expr" begin
         @testset "(tab, expr, dict)" begin
             @testset "Simple execute_on_input (x + 2)" begin

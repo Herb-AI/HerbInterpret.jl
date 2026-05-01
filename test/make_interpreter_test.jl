@@ -1,77 +1,76 @@
-import HerbInterpret: make_interpreter
-using RuntimeGeneratedFunctions
-RuntimeGeneratedFunctions.init(@__MODULE__)
-
-# Small module for testing state-less make_interpret
-module LocalStringDSL
-    using HerbCore
+@testitem "Test make_interpreter" begin
+    import HerbInterpret: make_interpreter
     using RuntimeGeneratedFunctions
-    RuntimeGeneratedFunctions.init(LocalStringDSL)
-    concat_cvc(a::String, b::String) = a * b
-end
+    using HerbGrammar, HerbCore, HerbSpecification
+    RuntimeGeneratedFunctions.init(@__MODULE__)
 
-# Simplest stateful grammar
-module LocalStateDSL
-    using HerbCore
-    using RuntimeGeneratedFunctions
-    RuntimeGeneratedFunctions.init(LocalStateDSL)
- 
-    struct St
-        x::Int
+    # Small module for testing state-less make_interpret
+    module LocalStringDSL
+        using HerbCore
+        using RuntimeGeneratedFunctions
+        RuntimeGeneratedFunctions.init(LocalStringDSL)
+        concat_cvc(a::String, b::String) = a * b
     end
 
-    inc(st::St) = St(st.x + 1)
-    iseven(st::St) = Base.iseven(st.x)
-end
+    # Simplest stateful grammar
+    module LocalStateDSL
+        using HerbCore
+        using RuntimeGeneratedFunctions
+        RuntimeGeneratedFunctions.init(LocalStateDSL)
+     
+        struct St
+            x::Int
+        end
 
-# Stateful grammar with if-then-else
-module LocalStateDSL2
-    using HerbCore
-    using HerbGrammar
-    using RuntimeGeneratedFunctions
-    RuntimeGeneratedFunctions.init(LocalStateDSL2)
- 
-    struct St
-        x::Int
+        inc(st::St) = St(st.x + 1)
+        iseven(st::St) = Base.iseven(st.x)
     end
 
-    inc(st::St) = St(st.x + 1)
-    dec(st::St) = St(st.x - 1)
-    iseven(st::St) = Base.iseven(st.x)
+    # Stateful grammar with if-then-else
+    module LocalStateDSL2
+        using HerbCore
+        using HerbGrammar
+        using RuntimeGeneratedFunctions
+        RuntimeGeneratedFunctions.init(LocalStateDSL2)
+     
+        struct St
+            x::Int
+        end
 
-    g2 = @cfgrammar begin
-        Start = Step
-        Step  = IF(Cond, Step, Step)
-        Step  = inc()
-        Step  = dec()
-        Cond  = iseven()
+        inc(st::St) = St(st.x + 1)
+        dec(st::St) = St(st.x - 1)
+        iseven(st::St) = Base.iseven(st.x)
+
+        g2 = @cfgrammar begin
+            Start = Step
+            Step  = IF(Cond, Step, Step)
+            Step  = inc()
+            Step  = dec()
+            Cond  = iseven()
+        end
     end
-end
 
-# Stateful grammar with WHILE 
-module LocalStateDSL3
-    using HerbCore
-    using HerbGrammar
-    using RuntimeGeneratedFunctions
-    RuntimeGeneratedFunctions.init(LocalStateDSL3)
- 
-    struct St
-        x::Int
+    # Stateful grammar with WHILE 
+    module LocalStateDSL3
+        using HerbCore
+        using HerbGrammar
+        using RuntimeGeneratedFunctions
+        RuntimeGeneratedFunctions.init(LocalStateDSL3)
+     
+        struct St
+            x::Int
+        end
+
+        inc(st::St) = St(st.x + 1)
+        lt3(st::St) = st.x < 3
+
+        g3 = @cfgrammar begin
+            Start = Step
+            Step  = WHILE(Cond, Step)
+            Step  = inc()
+            Cond  = lt3()
+        end
     end
-
-    inc(st::St) = St(st.x + 1)
-    lt3(st::St) = st.x < 3
-
-    g3 = @cfgrammar begin
-        Start = Step
-        Step  = WHILE(Cond, Step)
-        Step  = inc()
-        Cond  = lt3()
-    end
-end
-
-
-@testset verbose=true "Test make_interpreter" begin
     @testset "Test base functionality" begin
         g = @cfgrammar begin
             Number = |(1:2)

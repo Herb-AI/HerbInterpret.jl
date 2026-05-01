@@ -1,4 +1,4 @@
-@testset verbose = true "Interpret Function Tests" begin
+@testitem "Interpret Function Tests" begin
     @testset "Basic Interpretations on Arithmetic Operators" begin
         tab = Dict{Symbol,Any}(:x => 5, :y => 3, :+ => +, :* => *)
         @testset "Interpreting a single variable" begin
