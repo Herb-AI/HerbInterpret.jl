@@ -23,6 +23,60 @@ function _qualify(target_module::Module, f)
     return f isa Symbol ? GlobalRef(target_module, f) : f
 end
 
+"""
+    _collect_lambda_args(lhs)
+
+Return the flat list of variables bound by a lambda lhs.
+
+Supports:
+```
+- x
+- (x, y)
+- x::T
+- (x::T, y::S)
+- varargs like x...
+```
+
+Concretely this supports the following examples:
+```
+x -> Func(x)
+(x) -> Func(x)
+(x::Int) -> x + 1
+(x, y) -> x + y
+(x::Int, y::Int) -> x * y
+(xs...) -> sum(xs)
+(x, ys...) -> x + length(ys)
+```
+
+But not:
+```
+() -> 1                 # zero-arg lambda
+((x, y), z) -> x + z    # destructuring / nested tuple patterns
+(; x=1) -> x            # keyword-style parameter forms
+```
+"""
+function _collect_lambda_args(lhs)
+    if lhs isa Symbol
+        return Symbol[lhs]
+
+    elseif lhs isa Expr
+        if lhs.head == :(::)
+            return _collect_lambda_args(lhs.args[1])
+
+        elseif lhs.head == :tuple
+            out = Symbol[]
+            for a in lhs.args
+                append!(out, _collect_lambda_args(a))
+            end
+            return out
+
+        elseif lhs.head == :...
+            return _collect_lambda_args(lhs.args[1])
+        end
+    end
+
+    throw(ArgumentError("Unsupported lambda argument syntax: $lhs"))
+end
 
 """
     build_match_cases(grammar; target_module=@__MODULE__, input_symbols=nothing)
@@ -35,6 +89,20 @@ These branches are intended to be spliced into a block after
 `r = get_rule(prog); c = get_children(prog)`.
 
 Returns a vector of branching expressions.
+
+Is based on `emit_eval`, which translates nested rules like
+```
+Number = Number + 1
+```
+into
+```
+Expr(:call,
+     GlobalRef(target_module, :+),
+     :(self(self, c[1], input)),
+     1)
+```
+which denotes the intended operation within the target module applied to the evaluation result of the children, here `c[1]`.
+
 """
 function build_match_cases(
     grammar::AbstractGrammar;
@@ -46,10 +114,17 @@ function build_match_cases(
     # recurse on child i as: c[i]
     recur(i) = :( c[$i] )
 
-    # Emit code to evaluate a rule RHS, consuming children c[i] for nonterminals.
-    function emit_eval(x, next_child::Base.RefValue{Int})
+    # `bound` is needed to lambda values apart from grammar symbols and globals
+    # `next_child` denotes which child to consume next.
+    function emit_eval(
+        x,
+        next_child::Base.RefValue{Int},
+        bound::Set{Symbol} = Set{Symbol}(),
+    )
         if x isa Symbol
-            if x in grammar.types
+            if x in bound
+                return x
+            elseif x in nonterminals
                 i = next_child[]
                 next_child[] += 1
                 return recur(i)
@@ -58,18 +133,32 @@ function build_match_cases(
             else
                 return GlobalRef(target_module, x)
             end
+
         elseif x isa Expr
-            if x.head == :call
-                f = _qualify(target_module, x.args[1])
-                args = [emit_eval(a, next_child) for a in x.args[2:end]]
+            # x is a lambda function
+            if x.head == :->
+                lhs = x.args[1]
+                rhs = x.args[2]
+
+                bound2 = copy(bound)
+                union!(bound2, _collect_lambda_args(lhs))
+
+                return Expr(:->, lhs, emit_eval(rhs, next_child, bound2))
+            # x is a function call
+            elseif x.head == :call
+                f = emit_eval(x.args[1], next_child, bound)
+                args = [emit_eval(a, next_child, bound) for a in x.args[2:end]]
                 return Expr(:call, f, args...)
+
+            # x is an if-then-else block
             elseif x.head == :if
-                cond = emit_eval(x.args[1], next_child)
-                tbr  = emit_eval(x.args[2], next_child)
-                fbr  = emit_eval(x.args[3], next_child)
+                cond = emit_eval(x.args[1], next_child, bound)
+                tbr  = emit_eval(x.args[2], next_child, bound)
+                fbr  = emit_eval(x.args[3], next_child, bound)
                 return Expr(:if, cond, tbr, fbr)
+
             else
-                return Expr(x.head, (emit_eval(a, next_child) for a in x.args)...)
+                return Expr(x.head, (emit_eval(a, next_child, bound) for a in x.args)...)
             end
         else
             return x
@@ -87,24 +176,25 @@ function build_match_cases(
 
             pure =
                 (op isa Symbol) &&
-                all(a -> (a isa Symbol) && (a in grammar.types), args)
+                !(op in nonterminals) &&
+                all(a -> (a isa Symbol) && (a in nonterminals), args)
 
             if pure
                 nargs = length(args)
                 child_vals = [recur(i) for i in 1:nargs]
-                rhs_code = Expr(:call, _qualify(target_module, op), child_vals...)
+                rhs_code = Expr(:call, GlobalRef(target_module, op), child_vals...)
             else
                 nxt = Ref(1)
                 rhs_code = emit_eval(rhs_rule, nxt)
             end
 
-        elseif rhs_rule isa Expr && rhs_rule.head == :if
+        elseif rhs_rule isa Expr
             nxt = Ref(1)
             rhs_code = emit_eval(rhs_rule, nxt)
 
         elseif rhs_rule isa Symbol
-            if rhs_rule in grammar.types
-                rhs_code = recur(1)  # Start = Number  etc.
+            if rhs_rule in nonterminals
+                rhs_code = recur(1)
             elseif _is_input_tag(rhs_rule, input_set)
                 rhs_code = :( input[$(QuoteNode(rhs_rule))] )
             else
@@ -184,11 +274,9 @@ end
     make_interpreter(grammar::AbstractGrammar; input_symbols::Union{Nothing,AbstractVector{Symbol}} = nothing, target_module::Module = @__MODULE__, cache_module::Module = HerbInterpret)
 
 
-Construct a fast, *runtime-generated* interpreter for programs represented as
-`HerbCore.AbstractRuleNode`s.
+Constructs a fast, runtime-generated interpreter for programs represented as `HerbCore.AbstractRuleNode`s.
 
-The returned value is a callable `GeneratedInterpreter` (a small wrapper around a
-`RuntimeGeneratedFunctions.RuntimeGeneratedFunction`) that can be applied to:
+The returned value is a callable `GeneratedInterpreter` (a small wrapper around a `RuntimeGeneratedFunctions.RuntimeGeneratedFunction`) that can be applied to:
 
 - a single input dictionary:
   `interp(prog, input::AbstractDict{Symbol,Any})`
@@ -206,11 +294,11 @@ The returned value is a callable `GeneratedInterpreter` (a small wrapper around 
 
 ## Keyword arguments
 
-- `input_symbols`: Optional list of symbols that should be interpreted as *inputs*.  If provided, terminals matching these symbols (and any symbol following the `_arg_` convention) are read from the `input` dict.
+- `input_symbols`: Optional list of symbols that should be interpreted as inputs.  If provided, terminals matching these symbols (and any symbol following the `_arg_X` convention) are read from the `input` dict.
 
 - `target_module`: Module in which operator/function symbols appearing in the grammar are resolved. This is important when the grammar uses domain-specific primitives (e.g. `concat_cvc`, `substr_cvc`) that are defined in a benchmark module rather than in the caller’s module.
 
-- `cache_module`: Module used by `RuntimeGeneratedFunctions.jl` to store its internal cache. 
+- `cache_module`: Module used by `RuntimeGeneratedFunctions.jl` to store its internal cachen. 
 """
 function make_interpreter(grammar::AbstractGrammar;
     input_symbols::Union{Nothing,AbstractVector{Symbol}} = nothing,
@@ -279,44 +367,79 @@ end
 
 
 """
-    build_match_cases_stateful_rgf(grammar; target_module=@__MODULE__, state_name=:state, max_steps=1000)
+    build_match_cases_stateful(grammar; target_module=@__MODULE__, state_name=:state, max_steps=1000)
 
-Like `build_match_cases_stateful`, but emits code for a RuntimeGeneratedFunction body:
-- recursion is expressed as `self(self, child, state)`
-- `WHILE` is inlined (bounded by `max_steps`) to avoid needing external helpers
+Build guarded return branches for a state-threading interpreter over
+`HerbCore.AbstractRuleNode`s.
+
+The generated code assumes a function body with local variables
+
+    r = HerbCore.get_rule(prog)
+    c = HerbCore.get_children(prog)
+
+and returns expressions of the form
+
+    r == k && return <rhs>
+
+Semantics:
+- nonterminals recurse as `self(self, c[i], state)`
+- sequencing `(A; B)` threads state left-to-right
+- `IF(cond, t, f)` and `WHILE(cond, body)` are handled specially
+- ordinary named calls in DSL rules receive `state` implicitly
+- lambda bodies are rewritten as pure expressions, with bound variables
+  tracked so they are not mistaken for globals or nonterminals
+
+`target_module` is the module in which terminal symbols and primitive
+functions are resovled, `state_name` is the threaded state variable name,
+and `max_steps` bounds generated `WHILE` loops.
 """
 function build_match_cases_stateful(
-        grammar::AbstractGrammar;
-        target_module::Module = @__MODULE__,
-        state_name::Symbol = :state,
-    )
+    grammar::AbstractGrammar;
+    target_module::Module = @__MODULE__,
+    state_name::Symbol = :state,
+    max_steps::Int = 1000,
+)
     branches = Expr[]
-    max_steps=1000
+
+    nonterminals = Set{Symbol}(t for t in grammar.types if t !== nothing)
 
     # recurse into i-th child with threaded state
     child_call(i) = :( self(self, c[$i], $(state_name)) )
 
-    for (ind, rhs_rule) in pairs(grammar.rules)
-        rhs_code = nothing
+    function emit_eval(
+        x,
+        next_child::Base.RefValue{Int},
+        bound::Set{Symbol} = Set{Symbol}();
+        implicit_state::Bool = true,
+    )
+        if x isa Symbol
+            if x in bound
+                return x
+            elseif x in nonterminals
+                i = next_child[]
+                next_child[] += 1
+                return child_call(i)
+            else
+                return GlobalRef(target_module, x)
+            end
 
-        if rhs_rule isa Expr
-            if rhs_rule.head == :block
-                # (A; B) sequencing
-                rhs_code = :( self(self, c[2], self(self, c[1], $(state_name))) )
+        elseif x isa Expr
+            # sequencing: (A; B)
+            if implicit_state && x.head == :block
+                return :( self(self, c[2], self(self, c[1], $(state_name))) )
 
-            elseif rhs_rule.head == :call && rhs_rule.args[1] == :(;)
-                # alternative encoding of sequencing
-                rhs_code = :( self(self, c[2], self(self, c[1], $(state_name))) )
+            elseif implicit_state && x.head == :call && x.args[1] == :(;)
+                return :( self(self, c[2], self(self, c[1], $(state_name))) )
 
-            elseif rhs_rule.head == :call && rhs_rule.args[1] == :IF
-                rhs_code = :( self(self, c[1], $(state_name)) ?
-                              self(self, c[2], $(state_name)) :
-                              self(self, c[3], $(state_name)) )
+            # IF(cond, then, else)
+            elseif implicit_state && x.head == :call && x.args[1] == :IF
+                return :( self(self, c[1], $(state_name)) ?
+                          self(self, c[2], $(state_name)) :
+                          self(self, c[3], $(state_name)) )
 
-            elseif rhs_rule.head == :call && rhs_rule.args[1] == :WHILE
-                # Inline a bounded while-loop:
-                # WHILE(cond, body)
-                rhs_code = quote
+            # WHILE(cond, body)
+            elseif implicit_state && x.head == :call && x.args[1] == :WHILE
+                return quote
                     local st  = $(state_name)
                     local ctr = $(max_steps)
                     while ctr > 0 && self(self, c[1], st)
@@ -326,35 +449,91 @@ function build_match_cases_stateful(
                     st
                 end
 
-            elseif rhs_rule.head == :call
-                f    = rhs_rule.args[1]
-                args = rhs_rule.args[2:end]
+            # lambda
+            elseif x.head == :->
+                lhs = x.args[1]
+                rhs = x.args[2]
 
-                # Most stateful primitives are 0-arg: inc(), moveRight(), etc.
-                if isempty(args)
-                    rhs_code = Expr(:call, _qualify(target_module, f), state_name)
-                else
-                    # For calls with nonterminals, interpret children and pass results
-                    nargs      = length(args)
-                    child_vals = [child_call(i) for i in 1:nargs]
-                    rhs_code   = Expr(:call, _qualify(target_module, f), child_vals...)
-                end
+                bound2 = copy(bound)
+                union!(bound2, _collect_lambda_args(lhs))
+
+                # lambda bodies are treated as ordinary pure expressions
+                return Expr(:->, lhs, emit_eval(rhs, next_child, bound2; implicit_state=false))
+
+            # generic function call
+            elseif x.head == :call
+                f_raw = x.args[1]
+                f = emit_eval(f_raw, next_child, bound; implicit_state=implicit_state)
+                args = [emit_eval(a, next_child, bound; implicit_state=implicit_state) for a in x.args[2:end]]
+
+                # In stateful mode, a named global call gets `state` appended.
+                # This makes:
+                #   inc()       -> inc(state)
+                #   apply(Func) -> apply(f, state)
+                #
+                # But calls through lambdas / nonterminal-produced functions
+                # do NOT get state appended.
+                needs_state =
+                    implicit_state &&
+                    (f_raw isa Symbol) &&
+                    !(f_raw in bound) &&
+                    !(f_raw in nonterminals)
+
+                return needs_state ?
+                    Expr(:call, f, args..., state_name) :
+                    Expr(:call, f, args...)
+
             else
-                # fallback: forward to first child
-                rhs_code = :( self(self, c[1], $(state_name)) )
+                return Expr(
+                    x.head,
+                    (emit_eval(a, next_child, bound; implicit_state=implicit_state) for a in x.args)...,
+                )
+            end
+        else
+            return x
+        end
+    end
+
+    for (ind, rhs_rule) in pairs(grammar.rules)
+        rhs_code = nothing
+
+        if rhs_rule isa Expr && rhs_rule.head == :call
+            op   = rhs_rule.args[1]
+            args = rhs_rule.args[2:end]
+
+            pure =
+                (op isa Symbol) &&
+                !(op in nonterminals) &&
+                op != :IF &&
+                op != :WHILE &&
+                op != :(;) &&
+                all(a -> (a isa Symbol) && (a in nonterminals), args)
+
+            if pure
+                nargs = length(args)
+                child_vals = [child_call(i) for i in 1:nargs]
+
+                # stateful named calls receive state as final arg
+                rhs_code = Expr(:call, GlobalRef(target_module, op), child_vals..., state_name)
+            else
+                nxt = Ref(1)
+                rhs_code = emit_eval(rhs_rule, nxt)
             end
 
+        elseif rhs_rule isa Expr
+            nxt = Ref(1)
+            rhs_code = emit_eval(rhs_rule, nxt)
+
         elseif rhs_rule isa Symbol
-            if rhs_rule in grammar.types
-                # Alias: Start = Sequence, etc.
-                rhs_code = :( self(self, c[1], $(state_name)) )
+            if rhs_rule in nonterminals
+                # alias: Start = Step, etc.
+                rhs_code = child_call(1)
             else
-                # Rare: terminal symbol treated as primitive on state
-                rhs_code = Expr(:call, _qualify(target_module, rhs_rule), state_name)
+                # bare terminal symbol is a value/function, not a stateful primitive
+                rhs_code = GlobalRef(target_module, rhs_rule)
             end
 
         else
-            # literal terminal
             rhs_code = rhs_rule
         end
 
@@ -363,7 +542,6 @@ function build_match_cases_stateful(
 
     return branches
 end
-
 
 struct GeneratedStatefulInterpreter{F}
     core::F  # RuntimeGeneratedFunction
@@ -392,14 +570,28 @@ end
 
 
 """
-    make_stateful_interpreter_rgf(grammar; target_module=@__MODULE__, cache_module=HerbInterpret, max_steps=1000)
+    make_stateful_interpreter(grammar::AbstractGrammar;
+        target_module::Module = @__MODULE__,
+        cache_module::Module  = HerbInterpret,
+    )
 
-Build a RuntimeGeneratedFunctions-backed state-threading interpreter.
+Build a fast runtime-generated interpreter for state-threading DSLs over
+`HerbCore.AbstractRuleNode`s.
 
-- `target_module` controls where primitives (inc, moveRight, etc.) are resolved.
-- `cache_module` controls where RGF stores its cache. **This module must have**
-  `RuntimeGeneratedFunctions.init(@__MODULE__)` executed at module top level.
-- `max_steps` bounds generated WHILE loops.
+The returned `GeneratedStatefulInterpreter` supports:
+
+- `interp(prog, state)`
+- `interp(prog, states::AbstractVector)`
+- `interp(prog, ex::HerbSpecification.IOExample)` using `ex.in[:_arg_1]`
+- `interp(prog, exs::AbstractVector{<:HerbSpecification.IOExample})`
+
+The interpreter threads state through recursive child evaluation, supports
+sequencing, conditionals, and bounded `WHILE` loops, and resolves grammar
+primitives in `target_module`.
+
+`cache_module` is the module used by `RuntimeGeneratedFunctions.jl` for its
+internal cache and must be initialized with
+`RuntimeGeneratedFunctions.init(@__MODULE__)` at module top level.
 """
 function make_stateful_interpreter(
         grammar::AbstractGrammar;
