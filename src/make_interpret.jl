@@ -110,6 +110,8 @@ function build_match_cases(
     input_symbols::Union{Nothing,AbstractVector{Symbol}} = nothing,
 )
     input_set = input_symbols === nothing ? nothing : Set(input_symbols)
+    
+    nonterminals = Set{Symbol}(t for t in grammar.types if t !== nothing)
 
     # recurse on child i as: c[i]
     recur(i) = :( c[$i] )
