@@ -13,6 +13,9 @@ A tag is treated as an *input terminal* if:
 _is_input_tag(tag, input_set) =
     tag isa Symbol && (occursin("_arg_", String(tag)) || (input_set !== nothing && (tag in input_set)))
 
+_contains_input_tag(rule, input_set) = _is_input_tag(rule, input_set) || (rule isa Expr && any(arg -> _contains_input_tag(arg, input_set), rule.args))
+
+
 
 """
     _qualify(target_module::Module, f)
@@ -220,7 +223,10 @@ end
 
 struct GeneratedOutputInterpreter{F}
     core::F
+    arg_rules::Vector{Bool}
 end
+
+is_constant(rule, arg_rules, children_outputs) = !arg_rules[rule] && all(cs -> all(c -> c ===(first(cs)), cs), children_outputs)
 
 # Single input
 function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode,
@@ -229,7 +235,7 @@ function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode,
 end
 
 function (gi::GeneratedOutputInterpreter)(rule::Int,
-                                   children_outputs::AbstractVector{<:Any},
+                                   children_outputs,
                                    input::AbstractDict{Symbol,Any})
     return gi.core(gi.core, rule, children_outputs, input)
 end
@@ -241,8 +247,13 @@ function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode,
 end
 
 function (gi::GeneratedOutputInterpreter)(rule::Int,
-                                   children_outputs::AbstractVector{<:AbstractVector{<:Any}},
+                                   children_outputs,
                                    inputs::AbstractVector{<:AbstractDict{Symbol,Any}})
+    if is_constant(rule, gi.arg_rules, children_outputs)
+        res = gi.core(gi.core, rule, [first(outputs) for outputs in children_outputs], first(inputs))
+        return [res for _ in inputs]
+    end
+
     return [gi.core(gi.core, rule, [outputs[index] for outputs in children_outputs], input) for (index, input) in enumerate(inputs)]
 end
 
@@ -252,7 +263,7 @@ function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode,
 end
 
 function (gi::GeneratedOutputInterpreter)(rule::Int,
-                                   children_outputs::AbstractVector{<:Any},
+                                   children_outputs,
                                    ex::HerbSpecification.IOExample)
     return gi(rule, children_outputs, ex.in)
 end
@@ -263,8 +274,13 @@ function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode,
 end
 
 function (gi::GeneratedOutputInterpreter)(rule::Int,
-                                   children_outputs::AbstractVector{<:AbstractVector{<:Any}},
+                                   children_outputs,
                                    exs::AbstractVector{<:HerbSpecification.IOExample})
+    if is_constant(rule, gi.arg_rules, children_outputs)
+        res = gi(rule, [first(outputs) for outputs in children_outputs], first(exs))
+        return [res for _ in exs]
+    end
+
     return [gi(rule, [outputs[index] for outputs in children_outputs], ex) for (index, ex) in enumerate(exs)]
 end
 
@@ -362,9 +378,14 @@ function make_output_interpreter(grammar::AbstractGrammar;
     end)
     Base.remove_linenums!(ex)
 
+    # Obtain which rules are argument rules
+    input_set = input_symbols === nothing ? nothing : Set(input_symbols)
+    arg_rules = [_contains_input_tag(rule, input_set) for rule in grammar.rules]
+
+
     # Call RuntimeGeneratedFunction on this, so we can directly use it
     core = RuntimeGeneratedFunctions.RuntimeGeneratedFunction(cache_module, target_module, ex)
-    return GeneratedOutputInterpreter(core)
+    return GeneratedOutputInterpreter(core, arg_rules)
 end
 
 

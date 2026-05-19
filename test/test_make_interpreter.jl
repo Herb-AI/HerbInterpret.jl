@@ -545,4 +545,28 @@ inc(x) = x + 1
             @test interpret_custom(7, Vector[], exs) == [2,6] #
         end
     end
+
+    @testset "Test constants memory optimization" begin
+        g = @cfgrammar begin
+            Array = [1,2,3]
+            Array = [3,2,1]
+            Array = Array + Array
+        end
+
+        interpret_custom = HerbInterpret.make_output_interpreter(g)
+
+        inputs = [
+            Dict{Symbol,Any}(),
+            Dict{Symbol,Any}(),
+        ]
+
+        os1 = interpret_custom(1, Vector[], inputs)
+        os2 = interpret_custom(2, Vector[], inputs)
+        os3 = interpret_custom(3, [os1, os2], inputs)
+        
+        @test os1[1] === os1[2]
+        @test os2[1] === os2[2]
+        @test os3[1] === os3[2]
+    end
+    
 end
