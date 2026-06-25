@@ -1,21 +1,15 @@
 import HerbInterpret: make_interpreter
-using RuntimeGeneratedFunctions
-RuntimeGeneratedFunctions.init(@__MODULE__)
 
 # Small module for testing state-less make_interpret
 module LocalStringDSL
     using HerbCore
-    using RuntimeGeneratedFunctions
-    RuntimeGeneratedFunctions.init(LocalStringDSL)
     concat_cvc(a::String, b::String) = a * b
 end
 
 # Simplest stateful grammar
 module LocalStateDSL
     using HerbCore
-    using RuntimeGeneratedFunctions
-    RuntimeGeneratedFunctions.init(LocalStateDSL)
- 
+
     struct St
         x::Int
     end
@@ -28,9 +22,7 @@ end
 module LocalStateDSL2
     using HerbCore
     using HerbGrammar
-    using RuntimeGeneratedFunctions
-    RuntimeGeneratedFunctions.init(LocalStateDSL2)
- 
+
     struct St
         x::Int
     end
@@ -48,13 +40,11 @@ module LocalStateDSL2
     end
 end
 
-# Stateful grammar with WHILE 
+# Stateful grammar with WHILE
 module LocalStateDSL3
     using HerbCore
     using HerbGrammar
-    using RuntimeGeneratedFunctions
-    RuntimeGeneratedFunctions.init(LocalStateDSL3)
- 
+
     struct St
         x::Int
     end
@@ -71,7 +61,45 @@ module LocalStateDSL3
 end
 
 
+"""
+    _build_and_use_immediately(g; input_symbols)
+
+Build an interpreter with `make_interpreter` and call it *within the same,
+already-compiled function frame*. This is the scenario that fails with a
+world-age `MethodError` unless `GeneratedInterpreter`'s call operators use
+`Base.invokelatest` to cross into the freshly-`Core.eval`'d method: a bare
+top-level script (or a `@testset` block, which does not introduce a new
+function frame) would not actually exercise this path, so the regression
+needs its own wrapping function to be meaningful.
+"""
+function _build_and_use_immediately(g; input_symbols = nothing)
+    interp = HerbInterpret.make_interpreter(g; input_symbols = input_symbols)
+    rn = @rulenode(3{1,2})  # 1 + 2
+    return interp(rn, Dict{Symbol,Any}())
+end
+
+function _build_and_use_stateful_immediately(g, target_module, prog, state)
+    interp = HerbInterpret.make_stateful_interpreter(g; target_module = target_module)
+    return interp(prog, state)
+end
+
 @testset verbose=true "Test make_interpreter" begin
+    @testset "World-age: build and call within the same compiled function" begin
+        g = @cfgrammar begin
+            Number = |(1:2)
+            Number = Number + Number
+        end
+        @test _build_and_use_immediately(g) == 3
+
+        g2 = @cfgrammar begin
+            Start = Step
+            Step  = inc()
+        end
+        @test _build_and_use_stateful_immediately(
+            g2, LocalStateDSL, @rulenode(1{2}), LocalStateDSL.St(0),
+        ) == LocalStateDSL.St(1)
+    end
+
     @testset "Test base functionality" begin
         g = @cfgrammar begin
             Number = |(1:2)
@@ -179,7 +207,7 @@ end
                 Cond     = iseven()
             end
 
-            # Build the interpreter object (RGF-backed)
+            # Build the interpreter object
             interp = HerbInterpret.make_stateful_interpreter(
                 g;
                 target_module = LocalStateDSL,

@@ -1,6 +1,3 @@
-using RuntimeGeneratedFunctions
-RuntimeGeneratedFunctions.init(@__MODULE__) 
-
 """
     _is_input_tag(tag, input_set)
 
@@ -25,14 +22,17 @@ end
 
 
 """
-    build_match_cases(grammar; target_module=@__MODULE__, input_symbols=nothing)
+    build_match_cases(grammar; target_module=@__MODULE__, input_symbols=nothing, self_name=:self)
 
 Return a vector of "guarded return" branches of the form:
 
     r == k && return <rhs>
 
 These branches are intended to be spliced into a block after
-`r = get_rule(prog); c = get_children(prog)`.
+`r = get_rule(prog); c = get_children(prog)`, inside a function named
+`self_name` (so that recursive calls `self_name(c[i], input)` refer to that
+function directly, rather than threading a `self` callable through every
+call as an extra argument).
 
 Returns a vector of branching expressions.
 """
@@ -40,11 +40,12 @@ function build_match_cases(
     grammar::AbstractGrammar;
     target_module::Module = @__MODULE__,
     input_symbols::Union{Nothing,AbstractVector{Symbol}} = nothing,
+    self_name::Symbol = :self,
 )
     input_set = input_symbols === nothing ? nothing : Set(input_symbols)
 
-    # recurse on child i as: self(self, c[i], input)
-    recur(i) = :( self(self, c[$i], input) )
+    # recurse on child i as: <self_name>(c[i], input)
+    recur(i) = :( $(self_name)(c[$i], input) )
 
     # Emit code to evaluate a rule RHS, consuming children c[i] for nonterminals.
     function emit_eval(x, next_child::Base.RefValue{Int})
@@ -127,15 +128,22 @@ struct GeneratedInterpreter{F}
 end
 
 # Single input
+#
+# `gi.core` is a genuinely named, self-recursive function defined via `Core.eval`
+# (see `make_interpreter`), not a `RuntimeGeneratedFunctions`-backed callable that
+# threads `self` through every node. `invokelatest` is therefore only needed here,
+# once, to cross the world-age boundary into freshly-`eval`'d code; every recursive
+# call inside `gi.core`'s own body resolves itself by name at the (already current)
+# world age, so it pays no further dynamic-dispatch tax per AST node.
 function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode,
                                    input::AbstractDict{Symbol,Any})
-    return gi.core(gi.core, prog, input)
+    return Base.invokelatest(gi.core, prog, input)
 end
 
 # Vector of inputs
 function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode,
                                    inputs::AbstractVector{<:AbstractDict{Symbol,Any}})
-    return (gi.core).((gi.core,), (prog,), inputs)   # broadcasts (self, prog, input)
+    return [Base.invokelatest(gi.core, prog, input) for input in inputs]
 end
 
 function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode,
@@ -157,7 +165,8 @@ Construct a fast, *runtime-generated* interpreter for programs represented as
 `HerbCore.AbstractRuleNode`s.
 
 The returned value is a callable `GeneratedInterpreter` (a small wrapper around a
-`RuntimeGeneratedFunctions.RuntimeGeneratedFunction`) that can be applied to:
+genuinely named, self-recursive function defined via `Core.eval`) that can be
+applied to:
 
 - a single input dictionary:
   `interp(prog, input::AbstractDict{Symbol,Any})`
@@ -179,57 +188,64 @@ The returned value is a callable `GeneratedInterpreter` (a small wrapper around 
 
 - `target_module`: Module in which operator/function symbols appearing in the grammar are resolved. This is important when the grammar uses domain-specific primitives (e.g. `concat_cvc`, `substr_cvc`) that are defined in a benchmark module rather than in the caller’s module.
 
-- `cache_module`: Module used by `RuntimeGeneratedFunctions.jl` to store its internal cache. 
+- `cache_module`: Module in which the generated function is defined (via `Core.eval`).
 """
 function make_interpreter(grammar::AbstractGrammar;
     input_symbols::Union{Nothing,AbstractVector{Symbol}} = nothing,
     target_module::Module = @__MODULE__,
     cache_module::Module = HerbInterpret
 )
-    # ensure the cache exists in the chosen cache module
-    RuntimeGeneratedFunctions.init(cache_module)
+    # A gensym'd name, not a `self` parameter threaded through every call: this
+    # lets the generated function recurse on itself directly (a normal,
+    # specializable Julia call), instead of paying a world-age dynamic-dispatch
+    # tax on every single AST node. See `GeneratedInterpreter`'s call operators.
+    fname = gensym(:herb_interpret)
 
     # build if-then-else statements to evaluate the expressions
     branches = build_match_cases(grammar;
         target_module = target_module,
-        input_symbols = input_symbols
+        input_symbols = input_symbols,
+        self_name = fname,
     )
 
     # Add error for non-existent indices
     cascade = Expr(:block, branches..., :(error("No matching rule index: ", r)))
 
-    # Bit of meta-programming magic:
-    # Constructs an anonymous function with an extra self arg for recursion.
-    ex = :(function (self, prog, input)
+    ex = :(function $(fname)(prog, input)
         r = HerbCore.get_rule(prog)
         c = HerbCore.get_children(prog)
         $cascade
     end)
     Base.remove_linenums!(ex)
 
-    # Call RuntimeGeneratedFunction on this, so we can directly use it
-    core = RuntimeGeneratedFunctions.RuntimeGeneratedFunction(cache_module, target_module, ex)
+    # `Core.eval` returns the function object itself, already resolved at the
+    # current world age -- unlike a separate `getfield(cache_module, fname)`
+    # right after, which (on Julia >=1.12) would itself be a world-age-sensitive
+    # global-binding read performed from this (older) frame.
+    core = Core.eval(cache_module, ex)
     return GeneratedInterpreter(core)
 end
 
 
 """
-    build_match_cases_stateful_rgf(grammar; target_module=@__MODULE__, state_name=:state, max_steps=1000)
+    build_match_cases_stateful(grammar; target_module=@__MODULE__, state_name=:state, self_name=:self)
 
-Like `build_match_cases_stateful`, but emits code for a RuntimeGeneratedFunction body:
-- recursion is expressed as `self(self, child, state)`
+Like `build_match_cases`, but emits code for a state-threading interpreter body:
+- recursion is expressed as `<self_name>(child, state)` (a direct, named call --
+  see `make_stateful_interpreter`)
 - `WHILE` is inlined (bounded by `max_steps`) to avoid needing external helpers
 """
 function build_match_cases_stateful(
         grammar::AbstractGrammar;
         target_module::Module = @__MODULE__,
         state_name::Symbol = :state,
+        self_name::Symbol = :self,
     )
     branches = Expr[]
     max_steps=1000
 
     # recurse into i-th child with threaded state
-    child_call(i) = :( self(self, c[$i], $(state_name)) )
+    child_call(i) = :( $(self_name)(c[$i], $(state_name)) )
 
     for (ind, rhs_rule) in pairs(grammar.rules)
         rhs_code = nothing
@@ -237,16 +253,16 @@ function build_match_cases_stateful(
         if rhs_rule isa Expr
             if rhs_rule.head == :block
                 # (A; B) sequencing
-                rhs_code = :( self(self, c[2], self(self, c[1], $(state_name))) )
+                rhs_code = :( $(self_name)(c[2], $(self_name)(c[1], $(state_name))) )
 
             elseif rhs_rule.head == :call && rhs_rule.args[1] == :(;)
                 # alternative encoding of sequencing
-                rhs_code = :( self(self, c[2], self(self, c[1], $(state_name))) )
+                rhs_code = :( $(self_name)(c[2], $(self_name)(c[1], $(state_name))) )
 
             elseif rhs_rule.head == :call && rhs_rule.args[1] == :IF
-                rhs_code = :( self(self, c[1], $(state_name)) ?
-                              self(self, c[2], $(state_name)) :
-                              self(self, c[3], $(state_name)) )
+                rhs_code = :( $(self_name)(c[1], $(state_name)) ?
+                              $(self_name)(c[2], $(state_name)) :
+                              $(self_name)(c[3], $(state_name)) )
 
             elseif rhs_rule.head == :call && rhs_rule.args[1] == :WHILE
                 # Inline a bounded while-loop:
@@ -254,8 +270,8 @@ function build_match_cases_stateful(
                 rhs_code = quote
                     local st  = $(state_name)
                     local ctr = $(max_steps)
-                    while ctr > 0 && self(self, c[1], st)
-                        st = self(self, c[2], st)
+                    while ctr > 0 && $(self_name)(c[1], st)
+                        st = $(self_name)(c[2], st)
                         ctr -= 1
                     end
                     st
@@ -276,13 +292,13 @@ function build_match_cases_stateful(
                 end
             else
                 # fallback: forward to first child
-                rhs_code = :( self(self, c[1], $(state_name)) )
+                rhs_code = :( $(self_name)(c[1], $(state_name)) )
             end
 
         elseif rhs_rule isa Symbol
             if rhs_rule in grammar.types
                 # Alias: Start = Sequence, etc.
-                rhs_code = :( self(self, c[1], $(state_name)) )
+                rhs_code = :( $(self_name)(c[1], $(state_name)) )
             else
                 # Rare: terminal symbol treated as primitive on state
                 rhs_code = Expr(:call, _qualify(target_module, rhs_rule), state_name)
@@ -301,18 +317,20 @@ end
 
 
 struct GeneratedStatefulInterpreter{F}
-    core::F  # RuntimeGeneratedFunction
+    core::F
 end
 
 # single state
+#
+# See `GeneratedInterpreter`: `gi.core` recurses on itself by name, so
+# `invokelatest` is only needed once here, not per AST node.
 function (gi::GeneratedStatefulInterpreter)(prog::HerbCore.AbstractRuleNode, state)
-    return gi.core(gi.core, prog, state)
+    return Base.invokelatest(gi.core, prog, state)
 end
 
 # vector of states
 function (gi::GeneratedStatefulInterpreter)(prog::HerbCore.AbstractRuleNode, states::AbstractVector)
-    core = gi.core
-    return core.((core,), (prog,), states)
+    return [Base.invokelatest(gi.core, prog, state) for state in states]
 end
 
 # IOExample (state in :_arg_1)
@@ -327,13 +345,13 @@ end
 
 
 """
-    make_stateful_interpreter_rgf(grammar; target_module=@__MODULE__, cache_module=HerbInterpret, max_steps=1000)
+    make_stateful_interpreter(grammar; target_module=@__MODULE__, cache_module=HerbInterpret, max_steps=1000)
 
-Build a RuntimeGeneratedFunctions-backed state-threading interpreter.
+Build a state-threading interpreter, defined via `Core.eval` as a genuinely
+named, self-recursive function (see `make_interpreter`).
 
 - `target_module` controls where primitives (inc, moveRight, etc.) are resolved.
-- `cache_module` controls where RGF stores its cache. **This module must have**
-  `RuntimeGeneratedFunctions.init(@__MODULE__)` executed at module top level.
+- `cache_module` controls the module in which the generated function is defined.
 - `max_steps` bounds generated WHILE loops.
 """
 function make_stateful_interpreter(
@@ -341,24 +359,27 @@ function make_stateful_interpreter(
         target_module::Module = @__MODULE__,
         cache_module::Module  = HerbInterpret,
     )
-    # IMPORTANT: cache_module must be initialized at module top-level.
-    RuntimeGeneratedFunctions.init(cache_module)
+    fname = gensym(:herb_interpret_stateful)
 
     branches = build_match_cases_stateful(grammar;
         target_module = target_module,
-        state_name    = :state
+        state_name    = :state,
+        self_name     = fname,
     )
 
     cascade = Expr(:block, branches..., :(error("No matching rule index: ", r)))
 
-    # RGF body is an anonymous function. We add `self` for recursion.
-    ex = :(function (self, prog, state)
+    ex = :(function $(fname)(prog, state)
         r = HerbCore.get_rule(prog)
         c = HerbCore.get_children(prog)
         $cascade
     end)
     Base.remove_linenums!(ex)
 
-    core = RuntimeGeneratedFunctions.RuntimeGeneratedFunction(cache_module, target_module, ex)
+    # `Core.eval` returns the function object itself, already resolved at the
+    # current world age -- unlike a separate `getfield(cache_module, fname)`
+    # right after, which (on Julia >=1.12) would itself be a world-age-sensitive
+    # global-binding read performed from this (older) frame.
+    core = Core.eval(cache_module, ex)
     return GeneratedStatefulInterpreter(core)
 end
