@@ -64,3 +64,77 @@ resolve correctly:
 interp = make_interpreter(grammar; input_symbols = [:x], target_module = MyBenchmarkModule)
 ```
 
+### Stateful interpreters
+
+Some DSLs (e.g. robot/turtle languages) don't take an input dict but
+instead thread a single state value through the program, with dedicated
+`IF`/`WHILE` control-flow rules. `make_stateful_interpreter` builds an
+interpreter for that style of grammar:
+
+```julia
+using HerbCore, HerbGrammar, HerbInterpret
+
+struct RobotState
+    pos::Int
+end
+
+moveRight(s::RobotState) = RobotState(s.pos + 1)
+atWall(s::RobotState) = s.pos >= 3
+
+grammar = @cfgrammar begin
+    Start = Sequence
+    Sequence = Step
+    Sequence = (Step; Sequence)
+    Step = moveRight()
+    Step = WHILE(Cond, Step)
+    Cond = atWall()
+end
+
+interp = make_stateful_interpreter(grammar; target_module = @__MODULE__)
+
+rn = @rulenode 1{2{4}}  # moveRight()
+output = interp(rn, RobotState(0))
+println(output)  # RobotState(1)
+```
+
+Recognized control-flow forms in the grammar are:
+- `(Step; Sequence)` — sequencing, threads state through both children in order
+- `IF(Cond, Step, Step)` — branches on the condition
+- `WHILE(Cond, Step)` — loops while the condition holds, bounded to 1000 iterations
+
+As with `make_interpreter`, pass `target_module` to resolve primitives
+defined elsewhere, and `cache_module` to control where the generated
+function is defined.
+
+### Lambdas
+
+Grammar rules may contain lambda expressions, e.g. to synthesize a function
+passed to a higher-order primitive like `map`. Lambda argument variables are
+resolved as plain locals rather than as nonterminals or globals, and lambda
+bodies can themselves reference nonterminals (so a lambda can call another
+synthesized function):
+
+```julia
+using HerbCore, HerbGrammar, HerbInterpret
+
+grammar = @csgrammar begin
+    Arr = _arg_1
+    Arr = map(Func, Arr)
+
+    Func = iseven
+    Func = x -> x + 1
+end
+
+interp = make_interpreter(grammar)
+
+input = Dict{Symbol,Any}(:_arg_1 => [1, 2, 3, 4])
+
+rn = @rulenode 2{4,1}  # map(x -> x + 1, arr)
+println(interp(rn, input))  # [2, 3, 4, 5]
+```
+
+`make_stateful_interpreter` supports lambdas the same way, except lambda
+bodies are treated as pure expressions: named calls inside a lambda do
+*not* receive `state` implicitly (unlike ordinary DSL rules, where e.g.
+`inc()` becomes `inc(state)`).
+
