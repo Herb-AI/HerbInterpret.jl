@@ -161,14 +161,17 @@ end
 # `invokelatest` crosses the world-age boundary once, here, into the
 # freshly-`Core.eval`'d `gi.core`. Its recursive calls resolve themselves
 # directly by name, so no further `invokelatest` is needed per AST node.
+#
+# Value type left unconstrained: Dict is invariant in it, so a
+# `Dict{Symbol,Any}`-only signature would reject e.g. `Dict{Symbol,Int}`.
 function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode,
-                                   input::AbstractDict{Symbol,Any})
+                                   input::AbstractDict{Symbol})
     return Base.invokelatest(gi.core, prog, input)
 end
 
 # Vector of inputs
 function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode,
-                                   inputs::AbstractVector{<:AbstractDict{Symbol,Any}})
+                                   inputs::AbstractVector{<:AbstractDict{Symbol}})
     return [Base.invokelatest(gi.core, prog, input) for input in inputs]
 end
 
@@ -194,9 +197,9 @@ The returned value is a callable `GeneratedInterpreter` (a small wrapper around 
 self-recursive function defined via `Core.eval`) that can be applied to:
 
 - a single input dictionary:
-  `interp(prog, input::AbstractDict{Symbol,Any})`
+  `interp(prog, input::AbstractDict{Symbol})`
 - a vector of input dictionaries:
-  `interp(prog, inputs::AbstractVector{<:AbstractDict{Symbol,Any}})`
+  `interp(prog, inputs::AbstractVector{<:AbstractDict{Symbol}})`
 - a single `HerbSpecification.IOExample`:
   `interp(prog, ex::IOExample)` (uses `ex.in`)
 - a vector of `IOExample`s:

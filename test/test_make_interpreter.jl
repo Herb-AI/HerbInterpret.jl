@@ -198,6 +198,19 @@ inc(x) = x + 1
             outs = interpret_custom(rn, exs)
             @test outs == [6, 30]
         end
+
+        @testset "Concretely-typed input dict" begin
+            # `Dict(:x => 1)` infers as `Dict{Symbol,Int}`, not `Dict{Symbol,Any}` --
+            # Dict's invariance means this wouldn't match an
+            # `AbstractDict{Symbol,Any}`-typed call operator.
+            input = Dict(:x => 1)
+            @test !(input isa AbstractDict{Symbol,Any})
+            @test interpret_custom(rn, input) == 6
+
+            ex = HerbSpecification.IOExample(Dict(:x => 1), nothing)
+            @test !(ex.in isa AbstractDict{Symbol,Any})
+            @test interpret_custom(rn, ex) == 6
+        end
     end
 
     @testset "Synthesized lambda values" begin
