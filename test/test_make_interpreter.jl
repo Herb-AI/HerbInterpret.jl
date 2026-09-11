@@ -200,8 +200,8 @@ inc(x) = x + 1
         end
 
         @testset "Concretely-typed input dict" begin
-            # `Dict(:x => 1)` infers as `Dict{Symbol,Int}`, not `Dict{Symbol,Any}` --
-            # Dict's invariance means this wouldn't match an
+            # `Dict(:x => 1)` infers as `Dict{Symbol,Int}`, not `Dict{Symbol,Any}`.
+            # Dict is invariant in its value type, so this would not match an
             # `AbstractDict{Symbol,Any}`-typed call operator.
             input = Dict(:x => 1)
             @test !(input isa AbstractDict{Symbol,Any})
