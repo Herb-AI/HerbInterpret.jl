@@ -128,6 +128,26 @@ end
             outs = interpret_custom(rn, exs)
             @test outs == [6, 30]
         end
+
+        @testset "prepare_input: pre-converted inputs reused across programs" begin
+            # Single, pre-converted input
+            nt = HerbInterpret.prepare_input(interpret_custom, input)
+            @test nt isa NamedTuple
+            @test interpret_custom(rn, nt) == 6
+            @test interpret_custom(@rulenode(1), nt) == 1  # a different program, same prepared input
+
+            # Vector form, from dicts and from IOExamples
+            dicts = [Dict{Symbol,Any}(:x => 1), Dict{Symbol,Any}(:x => 3)]
+            nts = HerbInterpret.prepare_input(interpret_custom, dicts)
+            @test interpret_custom(rn, nts) == [6, 30]
+
+            exs = [
+                HerbSpecification.IOExample(Dict{Symbol,Any}(:x => 1), nothing),
+                HerbSpecification.IOExample(Dict{Symbol,Any}(:x => 3), nothing),
+            ]
+            nts_ex = HerbInterpret.prepare_input(interpret_custom, exs)
+            @test interpret_custom(rn, nts_ex) == [6, 30]
+        end
     end
 
     @testset "Interpreter uses correct operators from target module" begin

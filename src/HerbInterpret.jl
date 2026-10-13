@@ -16,5 +16,7 @@ export
     make_interpreter,
     make_stateful_interpreter,
     build_match_cases,
-    build_match_cases_stateful
+    build_match_cases_stateful,
+    build_dispatch,
+    prepare_input
 end # module HerbInterpret
