@@ -254,42 +254,79 @@ end
 _as_namedtuple(input::NamedTuple, ::Val) = input  # already converted, e.g. by a caller that reuses one
 
 """
-    _start_function(gi::GeneratedInterpreter, prog)
+    _dispatch(gi::GeneratedInterpreter, prog, input)
 
-The member of `gi.selves` that handles `prog`'s own nonterminal. Only this
-single lookup, done once per top-level call rather than once per node, is a
-dynamic (`Symbol`-keyed) dispatch; see [`GeneratedInterpreter`](@ref).
+Finds the member of `gi.selves` that handles `prog`'s own nonterminal and
+calls it on `(gi.selves, prog, input)`, in one step. Only this, done once per
+top-level call rather than once per node, is a dynamic (`Symbol`-keyed)
+dispatch; see [`GeneratedInterpreter`](@ref).
+
+Selection and call are fused into one `@generated` function rather than
+written as the more obvious `f = <select>; f(gi.selves, prog, input)`, and this
+is not just style: measured with `@allocated`, splitting them costs allocation
+that fusing them does not, *even when the selected `f` is reused for several
+calls* (e.g. several examples), which is counter-intuitive enough to spell out.
+
+- `getfield(gi.selves, nt::Symbol)` with a runtime (non-literal) `nt` allocates
+  on every call: even though `Selves`'s field names and types are fully known
+  statically, Julia's `getfield` lowering for a *dynamic* symbol on a
+  heterogeneous `NamedTuple` does not union-split the result, so the selected
+  function gets boxed before it can be used. Replacing this with an explicit
+  `nt === :a ? selves.a : nt === :b ? selves.b : ...` chain -- each branch
+  visibly a single concrete type to the optimizer, which only then applies the
+  union-split it was always capable of -- fixes *selecting* the function
+  (measured allocation-free), but:
+- calling the result still allocates, because `f`'s static type is the union
+  of every nonterminal's distinct `RuntimeGeneratedFunction` type, and invoking
+  a union-typed callable needs a runtime dispatch of its own to find which
+  compiled method to jump to, *regardless of how `f` was obtained* -- measured
+  the same whether `f` is freshly selected or an already-selected local reused
+  across a loop of calls.
+- the fix is to never let a "some nonterminal's function" value exist as data
+  at all: each branch of the chain both selects *and calls* its own
+  nonterminal's function directly (`selves.Start(selves, prog, input)`,
+  `selves.Sequence(...)`, ...), so every actual function call in the generated
+  code is to one statically-known concrete callable, not a union. Measured
+  1.8-3x fewer bytes per call than selecting once and reusing across 5 example
+  calls, on top of being correct for 1 call where reuse does not apply at all.
+
+Built once per distinct `Selves` with `@generated` (ordinary compile-time code
+generation, not `RuntimeGeneratedFunctions` -- there is no world-age concern
+here, since `fieldnames(Selves)` only depends on the type, known the first
+time this method is compiled for a given interpreter).
 """
-_start_function(gi::GeneratedInterpreter, prog::HerbCore.AbstractRuleNode) =
-    getfield(gi.selves, gi.types[HerbCore.get_rule(prog)]::Symbol)
+@generated function _dispatch(gi::GeneratedInterpreter{Selves}, prog::HerbCore.AbstractRuleNode, input) where {Selves}
+    chain = :(error("No matching nonterminal for rule ", HerbCore.get_rule(prog)))
+    for name in fieldnames(Selves)
+        chain = :(nt === $(QuoteNode(name)) ? gi.selves.$(name)(gi.selves, prog, input) : $chain)
+    end
+    return quote
+        nt = gi.types[HerbCore.get_rule(prog)]::Symbol
+        $chain
+    end
+end
 
 # Single input
 function (gi::GeneratedInterpreter{Selves,Names})(prog::HerbCore.AbstractRuleNode,
                                    input::AbstractDict{Symbol,Any}) where {Selves,Names}
-    f = _start_function(gi, prog)
-    return f(gi.selves, prog, _as_namedtuple(input, Val(Names)))
+    return _dispatch(gi, prog, _as_namedtuple(input, Val(Names)))
 end
 
 # Vector of inputs
 function (gi::GeneratedInterpreter{Selves,Names})(prog::HerbCore.AbstractRuleNode,
                                    inputs::AbstractVector{<:AbstractDict{Symbol,Any}}) where {Selves,Names}
-    f = _start_function(gi, prog)
-    selves = gi.selves
     val = Val(Names)
-    return [f(selves, prog, _as_namedtuple(input, val)) for input in inputs]
+    return [_dispatch(gi, prog, _as_namedtuple(input, val)) for input in inputs]
 end
 
 # Already-`prepare_input`-ed input(s): no conversion left to do. This is the
 # fast path a search loop should use -- see `prepare_input`.
 function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode, input::NamedTuple)
-    f = _start_function(gi, prog)
-    return f(gi.selves, prog, input)
+    return _dispatch(gi, prog, input)
 end
 
 function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode, inputs::AbstractVector{<:NamedTuple})
-    f = _start_function(gi, prog)
-    selves = gi.selves
-    return [f(selves, prog, input) for input in inputs]
+    return [_dispatch(gi, prog, input) for input in inputs]
 end
 
 """
@@ -320,15 +357,12 @@ end
 
 # Vector of IOExamples: this is what `take_examples`-style `Vector{<:IOExample}`
 # inputs actually go through (not the `AbstractDict` vector overload above), so
-# it gets the same treatment: `_start_function` and `Val(Names)` computed once
-# for the whole vector rather than once per example via a doubly-indirected
-# `gi(prog, ex)` -> `gi(prog, ex.in)` call chain.
+# it gets the same treatment: avoid the doubly-indirected `gi(prog, ex)` ->
+# `gi(prog, ex.in)` call chain, and compute `Val(Names)` once for the vector.
 function (gi::GeneratedInterpreter{Selves,Names})(prog::HerbCore.AbstractRuleNode,
                                    exs::AbstractVector{<:HerbSpecification.IOExample}) where {Selves,Names}
-    f = _start_function(gi, prog)
-    selves = gi.selves
     val = Val(Names)
-    return [f(selves, prog, _as_namedtuple(ex.in, val)) for ex in exs]
+    return [_dispatch(gi, prog, _as_namedtuple(ex.in, val)) for ex in exs]
 end
 
 
@@ -546,34 +580,39 @@ struct GeneratedStatefulInterpreter{Selves}
     types::Vector{Union{Nothing,Symbol}}
 end
 
-_start_function(gi::GeneratedStatefulInterpreter, prog::HerbCore.AbstractRuleNode) =
-    getfield(gi.selves, gi.types[HerbCore.get_rule(prog)]::Symbol)
+# See `_dispatch(::GeneratedInterpreter, ...)`'s docstring for why this fuses
+# selecting the nonterminal's function with calling it, rather than
+# `getfield(gi.selves, nt::Symbol)` or selecting into a local reused later.
+@generated function _dispatch(gi::GeneratedStatefulInterpreter{Selves}, prog::HerbCore.AbstractRuleNode, state) where {Selves}
+    chain = :(error("No matching nonterminal for rule ", HerbCore.get_rule(prog)))
+    for name in fieldnames(Selves)
+        chain = :(nt === $(QuoteNode(name)) ? gi.selves.$(name)(gi.selves, prog, state) : $chain)
+    end
+    return quote
+        nt = gi.types[HerbCore.get_rule(prog)]::Symbol
+        $chain
+    end
+end
 
 # single state
 function (gi::GeneratedStatefulInterpreter)(prog::HerbCore.AbstractRuleNode, state)
-    f = _start_function(gi, prog)
-    return f(gi.selves, prog, state)
+    return _dispatch(gi, prog, state)
 end
 
 # vector of states
 function (gi::GeneratedStatefulInterpreter)(prog::HerbCore.AbstractRuleNode, states::AbstractVector)
-    f = _start_function(gi, prog)
-    selves = gi.selves
-    return [f(selves, prog, state) for state in states]
+    return [_dispatch(gi, prog, state) for state in states]
 end
 
 # IOExample (state in :_arg_1)
 function (gi::GeneratedStatefulInterpreter)(prog::HerbCore.AbstractRuleNode, ex::HerbSpecification.IOExample)
-    return gi(prog, ex.in[:_arg_1])
+    return _dispatch(gi, prog, ex.in[:_arg_1])
 end
 
-# vector of IOExamples -- `_start_function` computed once for the whole
-# vector rather than once per example via a doubly-indirected `gi(prog, ex)`
-# -> `gi(prog, ex.in[:_arg_1])` call chain.
+# vector of IOExamples -- avoids the doubly-indirected `gi(prog, ex)` ->
+# `gi(prog, ex.in[:_arg_1])` call chain.
 function (gi::GeneratedStatefulInterpreter)(prog::HerbCore.AbstractRuleNode, exs::AbstractVector{<:HerbSpecification.IOExample})
-    f = _start_function(gi, prog)
-    selves = gi.selves
-    return [f(selves, prog, ex.in[:_arg_1]) for ex in exs]
+    return [_dispatch(gi, prog, ex.in[:_arg_1]) for ex in exs]
 end
 
 
