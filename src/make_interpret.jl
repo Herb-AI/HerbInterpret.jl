@@ -16,16 +16,6 @@ _is_input_tag(tag, input_set) =
 _contains_input_tag(rule, input_set) = _is_input_tag(rule, input_set) || (rule isa Expr && any(arg -> _contains_input_tag(arg, input_set), rule.args))
 
 
-
-"""
-    _qualify(target_module::Module, f)
-
-Resolve symbol `f` in `target_module` at compile time.
-"""
-function _qualify(target_module::Module, f)
-    return f isa Symbol ? GlobalRef(target_module, f) : f
-end
-
 """
     _collect_lambda_args(lhs)
 
