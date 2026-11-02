@@ -10,6 +10,7 @@ A tag is treated as an *input terminal* if:
 _is_input_tag(tag, input_set) =
     tag isa Symbol && (occursin("_arg_", String(tag)) || (input_set !== nothing && (tag in input_set)))
 
+_contains_input_tag(rule, input_set) = _is_input_tag(rule, input_set) || (rule isa Expr && any(arg -> _contains_input_tag(arg, input_set), rule.args))
 
 """
     _collect_lambda_args(lhs)
