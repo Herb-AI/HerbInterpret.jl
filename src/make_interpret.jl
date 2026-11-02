@@ -10,6 +10,7 @@ A tag is treated as an *input terminal* if:
 _is_input_tag(tag, input_set) =
     tag isa Symbol && (occursin("_arg_", String(tag)) || (input_set !== nothing && (tag in input_set)))
 
+_contains_input_tag(rule, input_set) = _is_input_tag(rule, input_set) || (rule isa Expr && any(arg -> _contains_input_tag(arg, input_set), rule.args))
 
 """
     _collect_lambda_args(lhs)
@@ -158,6 +159,14 @@ struct GeneratedInterpreter{F}
     core::F
 end
 
+
+struct GeneratedOutputInterpreter{F}
+    core::F
+    arg_rules::Vector{Bool}
+end
+
+is_constant(rule, arg_rules, children_outputs) = !arg_rules[rule] && all(cs -> all(c -> c ===(first(cs)), cs), children_outputs)
+
 # `invokelatest` crosses the world-age boundary once, here, into the
 # freshly-`Core.eval`'d `gi.core`. Its recursive calls resolve themselves
 # directly by name, so no further `invokelatest` is needed per AST node.
@@ -169,10 +178,27 @@ function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode,
     return Base.invokelatest(gi.core, prog, input)
 end
 
+function (gi::GeneratedOutputInterpreter)(rule::Int,
+                                   children_outputs,
+                                   input::AbstractDict{Symbol,Any})
+    return Base.invokelatest(gi.core, rule, children_outputs, input)
+end
+
 # Vector of inputs
 function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode,
                                    inputs::AbstractVector{<:AbstractDict{Symbol}})
     return [Base.invokelatest(gi.core, prog, input) for input in inputs]
+end
+
+function (gi::GeneratedOutputInterpreter)(rule::Int,
+                                   children_outputs,
+                                   inputs::AbstractVector{<:AbstractDict{Symbol,Any}})
+    if is_constant(rule, gi.arg_rules, children_outputs)
+        res = Base.invokelatest(gi.core, rule, [first(outputs) for outputs in children_outputs], first(inputs))
+        return [res for _ in inputs]
+    end
+
+    return [Base.invokelatest(gi.core, rule, [outputs[index] for outputs in children_outputs], input) for (index, input) in enumerate(inputs)]
 end
 
 function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode,
@@ -180,9 +206,27 @@ function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode,
     return gi(prog, ex.in)
 end
 
+function (gi::GeneratedOutputInterpreter)(rule::Int,
+                                   children_outputs,
+                                   ex::HerbSpecification.IOExample)
+    return gi(rule, children_outputs, ex.in)
+end
+
+
 function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode,
                                    exs::AbstractVector{<:HerbSpecification.IOExample})
     return [gi(prog, ex) for ex in exs]
+end
+
+function (gi::GeneratedOutputInterpreter)(rule::Int,
+                                   children_outputs,
+                                   exs::AbstractVector{<:HerbSpecification.IOExample})
+    if is_constant(rule, gi.arg_rules, children_outputs)
+        res = gi(rule, [first(outputs) for outputs in children_outputs], first(exs))
+        return [res for _ in exs]
+    end
+
+    return [gi(rule, [outputs[index] for outputs in children_outputs], ex) for (index, ex) in enumerate(exs)]
 end
 
 
@@ -239,13 +283,49 @@ function make_interpreter(grammar::AbstractGrammar;
 
     ex = :(function $(fname)(prog, input)
         r = HerbCore.get_rule(prog)
-        c = HerbCore.get_children(prog)
+        c = [self(self, child, input) for child in get_children(prog)]
+        any(isnothing, c) && return nothing
         $cascade
     end)
     Base.remove_linenums!(ex)
 
     core = Core.eval(cache_module, ex)
     return GeneratedInterpreter(core)
+end
+
+function make_output_interpreter(grammar::AbstractGrammar;
+    input_symbols::Union{Nothing,AbstractVector{Symbol}} = nothing,
+    target_module::Module = @__MODULE__,
+    cache_module::Module = HerbInterpret
+)
+    # Gensym'd so the generated function can recurse on itself by name,
+    # as a normal, specializable Julia call.
+    fname = gensym(:herb_interpret)
+
+    # build if-then-else statements to evaluate the expressions
+    branches = build_match_cases(grammar;
+        target_module = target_module,
+        input_symbols = input_symbols,
+        self_name = fname,
+    )
+
+    # Add error for non-existent indices
+    cascade = Expr(:block, branches..., :(error("No matching rule index: ", r)))
+
+    ex = :(function $(fname)(prog, input)
+        r = rule
+        c = children_outputs
+        any(isnothing, c) && return nothing
+        $cascade
+    end)
+    Base.remove_linenums!(ex)
+
+    # Obtain which rules are argument rules
+    input_set = input_symbols === nothing ? nothing : Set(input_symbols)
+    arg_rules = [_contains_input_tag(rule, input_set) for rule in grammar.rules]
+
+    core = Core.eval(cache_module, ex)
+    return GeneratedOutputInterpreter(core, arg_rules)
 end
 
 
