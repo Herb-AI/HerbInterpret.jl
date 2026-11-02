@@ -201,6 +201,25 @@ struct GeneratedInterpreter{F}
 end
 
 
+# The abstract element type deliberately prevents inference from visiting every
+# generated rule. The wrapper crosses world age once via invokelatest(core, ...);
+# the selected rule and its typed batch loop then use ordinary calls.
+struct OutputRuleDispatch
+    rules::Vector{Any}
+end
+
+function (dispatch::OutputRuleDispatch)(rule, children, input)
+    # Preserve scalar failure propagation, including before rule validation.
+    any(isnothing, children) && return nothing
+    checkbounds(Bool, dispatch.rules, rule) || error("No matching rule index: ", rule)
+    return dispatch.rules[rule](rule, children, input)
+end
+
+function (dispatch::OutputRuleDispatch)(rule, children, inputs::AbstractVector)
+    checkbounds(Bool, dispatch.rules, rule) || error("No matching rule index: ", rule)
+    return dispatch.rules[rule](rule, children, inputs)
+end
+
 struct GeneratedOutputInterpreter{F}
     core::F
     arg_rules::Vector{Bool}
@@ -355,56 +374,44 @@ for example, integer results with failed examples use `Union{Nothing,Int}`.
 A `nothing` child propagates to that example's result before the rule runs.
 Input-independent rules with identical child values across examples retain
 the constant-result shortcut. Empty batches return `Any[]`.
+
+Scalar and batch evaluators are generated separately for each rule, so new child
+value types compile only the selected rule rather than the complete grammar.
+The returned interpreter can be shared across problems/trials with the same
+unchanged grammar and module context; it contains no per-problem output cache.
 """
 function make_output_interpreter(grammar::AbstractGrammar;
     input_symbols::Union{Nothing,AbstractVector{Symbol}} = nothing,
     target_module::Module = @__MODULE__,
     cache_module::Module = HerbInterpret
 )
-    # Gensym'd so the generated function can recurse on itself by name,
-    # as a normal, specializable Julia call.
-    fname = gensym(:herb_interpret)
+    scalar = build_match_cases(grammar; target_module, input_symbols)
+    batch = build_match_cases(grammar; target_module, input_symbols, batch_output=true)
 
-    # build if-then-else statements to evaluate the expressions
-    branches = build_match_cases(grammar;
-        target_module = target_module,
-        input_symbols = input_symbols,
-        self_name = fname,
-    )
-
-    # Add error for non-existent indices
-    cascade = Expr(:block, branches..., :(error("No matching rule index: ", r)))
-
-    batch_branches = build_match_cases(grammar;
-        target_module = target_module,
-        input_symbols = input_symbols,
-        self_name = fname,
-        batch_output = true,
-    )
-    batch_cascade = Expr(:block, batch_branches..., :(error("No matching rule index: ", r)))
-
-    ex = quote
-      function $(fname)(rule, children_outputs, input)
-        r = rule
-        c = children_outputs
-        any(isnothing, c) && return nothing
-        $cascade
-      end
-      function $(fname)(rule, children_outputs, inputs::AbstractVector)
-        r = rule
-        c = children_outputs
-        $batch_cascade
-      end
-      $(fname)
+    # Keep concrete child specialization local to one rule. A runtime rule
+    # number must not make the compiler infer every branch of the grammar.
+    rules = Any[]
+    for i in eachindex(scalar)
+        name = gensym(:herb_output_rule)
+        definition = quote
+            function $name(r, c, input)
+                any(isnothing, c) && return nothing
+                $(scalar[i])
+            end
+            function $name(r, c, inputs::AbstractVector)
+                $(batch[i])
+            end
+            $name
+        end
+        Base.remove_linenums!(definition)
+        # Do not generate one 320-argument vector literal: compiling that table
+        # can itself dominate startup for large grammars.
+        push!(rules, Core.eval(cache_module, definition))
     end
-    Base.remove_linenums!(ex)
 
-    # Obtain which rules are argument rules
     input_set = input_symbols === nothing ? nothing : Set(input_symbols)
     arg_rules = [_contains_input_tag(rule, input_set) for rule in grammar.rules]
-
-    core = Core.eval(cache_module, ex)
-    return GeneratedOutputInterpreter(core, arg_rules)
+    return GeneratedOutputInterpreter(OutputRuleDispatch(rules), arg_rules)
 end
 
 

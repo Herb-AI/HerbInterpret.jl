@@ -116,3 +116,43 @@ end
     @test isconcretetype(eltype(fs))
     @test [f(10) for f in fs] == [11, 12, 13]
 end
+
+module HigherOrderOutputDSL
+    using HerbGrammar
+    increment(x) = x + 1
+    twice(f) = x -> f(f(x))
+    apply(f, x) = f(x)
+    fail(x) = throw(ArgumentError("DSL failure"))
+    grammar = @cfgrammar begin
+        N = _arg_1
+        F = increment
+        F = twice(F)
+        Start = apply(F, N)
+        N = fail(N)
+    end
+end
+
+@testset "Rule-local compilation and higher-order reuse" begin
+    g = HigherOrderOutputDSL.grammar
+    output = HerbInterpret.make_output_interpreter(g; target_module=HigherOrderOutputDSL)
+    tree = make_interpreter(g; target_module=HigherOrderOutputDSL)
+    program = @rulenode(4{3{2},1})
+    for values in ((1, 2, 3), (10, -3, 0))
+        inputs = [Dict(:_arg_1=>x) for x in values]
+        fs = output(2, Vector[], inputs)
+        doubled = output(3, [fs], inputs)
+        @test [f(5) for f in doubled] == fill(7, 3)
+        result = output(4, Vector[doubled, output(1, Vector[], inputs)], inputs)
+        @test result == tree(program, inputs) == collect(values) .+ 2
+        @test result isa Vector{Int}
+    end
+    # Nonconstant closure-valued children retain per-example captures.
+    fs = [x -> x + n for n in (1, 2, 3)]
+    inputs = [Dict(:_arg_1=>0) for _ in 1:3]
+    doubled = output(3, [fs], inputs)
+    @test [f(10) for f in doubled] == [12, 14, 16]
+    @test_throws ArgumentError output(5, Any[1], inputs[1])
+    @test_throws ArgumentError output(5, [[1, 2, 3]], inputs)
+    @test output(5, Any[nothing], inputs[1]) === nothing
+
+end
