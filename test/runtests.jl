@@ -13,4 +13,5 @@ using Test
     include("test_interpret.jl")
     include("test_call_func.jl")
     include("test_make_interpreter.jl")
+    include("test_output_interpreter.jl")
 end

@@ -40,17 +40,19 @@ end
 
 
 """
-    build_match_cases(grammar; target_module=@__MODULE__, input_symbols=nothing, self_name=:self)
+    build_match_cases(grammar; target_module=@__MODULE__, input_symbols=nothing,
+                      self_name=:self, evaluate_children=false, batch_output=false)
 
 Return a vector of "guarded return" branches of the form:
 
     r == k && return <rhs>
 
-These branches are intended to be spliced into a block after
-`r = get_rule(prog); c = get_children(prog)`, inside a function named
-`self_name` (so that recursive calls `self_name(c[i], input)` refer to that
-function directly, rather than threading a `self` callable through every
-call as an extra argument).
+By default, `r` is the rule index and `c` contains evaluated child values.
+With `evaluate_children=true`, `c` contains child nodes: each branch evaluates
+its children into locals through `self_name(child, input)` and propagates
+`nothing` before evaluating the rule. With `batch_output=true`, `c` contains
+vectors of child outputs and each branch loops over `inputs`, propagating
+`nothing` independently for each example. These two modes are mutually exclusive.
 
 Grammar rules may contain lambdas (e.g. `Func = x -> Func(x) + 1`); their
 argument variables are tracked so they resolve as plain locals rather than
@@ -63,13 +65,17 @@ function build_match_cases(
     target_module::Module = @__MODULE__,
     input_symbols::Union{Nothing,AbstractVector{Symbol}} = nothing,
     self_name::Symbol = :self,
+    evaluate_children::Bool = false,
+    batch_output::Bool = false,
 )
+    evaluate_children && batch_output && throw(ArgumentError("Choose tree or batch child evaluation, not both"))
     input_set = input_symbols === nothing ? nothing : Set(input_symbols)
     nonterminals = Set{Symbol}(t for t in grammar.types if t !== nothing)
 
-    # recurse on child i as: <self_name>(c[i], input)
-    # recur(i) = :( $(self_name)(c[$i], input) )
-    recur(i) = :( c[$i] )
+    # Tree interpreters bind child results to locals once per rule. Output
+    # interpreters already receive evaluated children in `c`.
+    child_values = Symbol[]
+    recur(i) = (evaluate_children || batch_output) ? child_values[i] : :( c[$i] )
 
     # Emit code to evaluate a rule RHS, consuming children c[i] for nonterminals.
     # `bound` holds lambda-bound variables, checked first so they aren't
@@ -112,6 +118,10 @@ function build_match_cases(
     branches = Expr[]
 
     for (ind, rhs_rule) in pairs(grammar.rules)
+        empty!(child_values)
+        if evaluate_children || batch_output
+            append!(child_values, [gensym(:child) for _ in grammar.childtypes[ind]])
+        end
         rhs_code = nothing
 
         if rhs_rule isa Expr && rhs_rule.head == :call
@@ -149,7 +159,31 @@ function build_match_cases(
             rhs_code = rhs_rule
         end
 
-        push!(branches, :( r == $(ind) && return $rhs_code ))
+        if batch_output
+            # A fresh let binding per example also keeps returned lambdas from
+            # capturing child values belonging to a later example.
+            bindings = [:($value = c[$i][index]) for (i, value) in enumerate(child_values)]
+            invalid = foldl((a, b) -> :($a || $b),
+                [:($value === nothing) for value in child_values]; init = false)
+            row = Expr(:let, Expr(:block, :(input = $(GlobalRef(@__MODULE__, :_output_input))(example)), bindings...),
+                :(if $invalid; nothing; else; $rhs_code; end))
+            push!(branches, quote
+                if r == $ind
+                    results = Vector{Any}(undef, length(inputs))
+                    for (index, example) in enumerate(inputs)
+                        results[index] = $row
+                    end
+                    return results
+                end
+            end)
+        elseif evaluate_children
+            evaluations = [:($value = $(self_name)(c[$i], input)) for (i, value) in enumerate(child_values)]
+            checks = [:($value === nothing && return nothing) for value in child_values]
+            body = Expr(:block, evaluations..., checks..., :(return $rhs_code))
+            push!(branches, :(if r == $(ind); $body; end))
+        else
+            push!(branches, :( r == $(ind) && return $rhs_code ))
+        end
     end
 
     return branches
@@ -168,6 +202,9 @@ end
 
 is_constant(rule, arg_rules, children_outputs) = !arg_rules[rule] && all(cs -> all(c -> c ===(first(cs)), cs), children_outputs)
 
+_output_input(input::AbstractDict) = input
+_output_input(example::HerbSpecification.IOExample) = example.in
+
 # `invokelatest` crosses the world-age boundary once, here, into the
 # freshly-`Core.eval`'d `gi.core`. Its recursive calls resolve themselves
 # directly by name, so no further `invokelatest` is needed per AST node.
@@ -181,7 +218,7 @@ end
 
 function (gi::GeneratedOutputInterpreter)(rule::Int,
                                    children_outputs,
-                                   input::AbstractDict{Symbol,Any})
+                                   input::AbstractDict{Symbol})
     return Base.invokelatest(gi.core, rule, children_outputs, input)
 end
 
@@ -193,13 +230,14 @@ end
 
 function (gi::GeneratedOutputInterpreter)(rule::Int,
                                    children_outputs,
-                                   inputs::AbstractVector{<:AbstractDict{Symbol,Any}})
+                                   inputs::AbstractVector{<:AbstractDict{Symbol}})
+    isempty(inputs) && return Any[]
     if is_constant(rule, gi.arg_rules, children_outputs)
         res = Base.invokelatest(gi.core, rule, [first(outputs) for outputs in children_outputs], first(inputs))
         return [res for _ in inputs]
     end
 
-    return [Base.invokelatest(gi.core, rule, [outputs[index] for outputs in children_outputs], input) for (index, input) in enumerate(inputs)]
+    return Base.invokelatest(gi.core, rule, children_outputs, inputs)
 end
 
 function (gi::GeneratedInterpreter)(prog::HerbCore.AbstractRuleNode,
@@ -222,12 +260,13 @@ end
 function (gi::GeneratedOutputInterpreter)(rule::Int,
                                    children_outputs,
                                    exs::AbstractVector{<:HerbSpecification.IOExample})
+    isempty(exs) && return Any[]
     if is_constant(rule, gi.arg_rules, children_outputs)
         res = gi(rule, [first(outputs) for outputs in children_outputs], first(exs))
         return [res for _ in exs]
     end
 
-    return [gi(rule, [outputs[index] for outputs in children_outputs], ex) for (index, ex) in enumerate(exs)]
+    return Base.invokelatest(gi.core, rule, children_outputs, exs)
 end
 
 
@@ -277,6 +316,7 @@ function make_interpreter(grammar::AbstractGrammar;
         target_module = target_module,
         input_symbols = input_symbols,
         self_name = fname,
+        evaluate_children = true,
     )
 
     # Add error for non-existent indices
@@ -284,8 +324,7 @@ function make_interpreter(grammar::AbstractGrammar;
 
     ex = :(function $(fname)(prog, input)
         r = HerbCore.get_rule(prog)
-        c = [$(fname)(child, input) for child in get_children(prog)]
-        any(isnothing, c) && return nothing
+        c = HerbCore.get_children(prog)
         $cascade
     end)
     Base.remove_linenums!(ex)
@@ -294,6 +333,20 @@ function make_interpreter(grammar::AbstractGrammar;
     return GeneratedInterpreter(core)
 end
 
+"""
+    make_output_interpreter(grammar; input_symbols=nothing,
+                            target_module=HerbInterpret, cache_module=HerbInterpret)
+
+Generate an interpreter for a rule and its already evaluated children.
+For a single dictionary or `IOExample`, children are scalar values. For a
+vector of dictionaries or examples, each child is a vector of values aligned
+with the examples. Batch evaluation dispatches on the rule once and reads
+child values directly, without allocating a child vector per example.
+
+A `nothing` child propagates to that example's result before the rule runs.
+Input-independent rules with identical child values across examples retain
+the constant-result shortcut. Empty batches return `Any[]`.
+"""
 function make_output_interpreter(grammar::AbstractGrammar;
     input_symbols::Union{Nothing,AbstractVector{Symbol}} = nothing,
     target_module::Module = @__MODULE__,
@@ -313,12 +366,28 @@ function make_output_interpreter(grammar::AbstractGrammar;
     # Add error for non-existent indices
     cascade = Expr(:block, branches..., :(error("No matching rule index: ", r)))
 
-    ex = :(function $(fname)(rule, children_outputs, input)
+    batch_branches = build_match_cases(grammar;
+        target_module = target_module,
+        input_symbols = input_symbols,
+        self_name = fname,
+        batch_output = true,
+    )
+    batch_cascade = Expr(:block, batch_branches..., :(error("No matching rule index: ", r)))
+
+    ex = quote
+      function $(fname)(rule, children_outputs, input)
         r = rule
         c = children_outputs
         any(isnothing, c) && return nothing
         $cascade
-    end)
+      end
+      function $(fname)(rule, children_outputs, inputs::AbstractVector)
+        r = rule
+        c = children_outputs
+        $batch_cascade
+      end
+      $(fname)
+    end
     Base.remove_linenums!(ex)
 
     # Obtain which rules are argument rules
