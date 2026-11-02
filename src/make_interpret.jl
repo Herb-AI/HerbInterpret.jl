@@ -68,7 +68,8 @@ function build_match_cases(
     nonterminals = Set{Symbol}(t for t in grammar.types if t !== nothing)
 
     # recurse on child i as: <self_name>(c[i], input)
-    recur(i) = :( $(self_name)(c[$i], input) )
+    # recur(i) = :( $(self_name)(c[$i], input) )
+    recur(i) = :( c[$i] )
 
     # Emit code to evaluate a rule RHS, consuming children c[i] for nonterminals.
     # `bound` holds lambda-bound variables, checked first so they aren't
@@ -283,7 +284,7 @@ function make_interpreter(grammar::AbstractGrammar;
 
     ex = :(function $(fname)(prog, input)
         r = HerbCore.get_rule(prog)
-        c = [self(self, child, input) for child in get_children(prog)]
+        c = [$(fname)(child, input) for child in get_children(prog)]
         any(isnothing, c) && return nothing
         $cascade
     end)
