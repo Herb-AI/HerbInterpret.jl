@@ -160,20 +160,26 @@ function build_match_cases(
         end
 
         if batch_output
+            child_vectors = [gensym(:outputs) for _ in child_values]
             # A fresh let binding per example also keeps returned lambdas from
             # capturing child values belonging to a later example.
-            bindings = [:($value = c[$i][index]) for (i, value) in enumerate(child_values)]
+            bindings = [:($value = $(child_vectors[i])[index]) for (i, value) in enumerate(child_values)]
             invalid = foldl((a, b) -> :($a || $b),
                 [:($value === nothing) for value in child_values]; init = false)
             row = Expr(:let, Expr(:block, :(input = $(GlobalRef(@__MODULE__, :_output_input))(example)), bindings...),
                 :(if $invalid; nothing; else; $rhs_code; end))
+            # Specialize the loop on each actual child-vector type, even when
+            # the caller stores the children in an abstractly typed collection.
+            # map preserves concrete output types and widens when values differ.
+            evaluator = Expr(:->, Expr(:tuple, child_vectors..., :inputs), quote
+                map(enumerate(inputs)) do (index, example)
+                    $row
+                end
+            end)
+            child_args = [:(c[$i]) for i in eachindex(child_values)]
             push!(branches, quote
                 if r == $ind
-                    results = Vector{Any}(undef, length(inputs))
-                    for (index, example) in enumerate(inputs)
-                        results[index] = $row
-                    end
-                    return results
+                    return ($evaluator)($(child_args...), inputs)
                 end
             end)
         elseif evaluate_children
@@ -342,6 +348,9 @@ For a single dictionary or `IOExample`, children are scalar values. For a
 vector of dictionaries or examples, each child is a vector of values aligned
 with the examples. Batch evaluation dispatches on the rule once and reads
 child values directly, without allocating a child vector per example.
+Result vectors retain their inferred or observed element types rather than
+always using `Any`. Mixed results widen as needed without converting values;
+for example, integer results with failed examples use `Union{Nothing,Int}`.
 
 A `nothing` child propagates to that example's result before the rule runs.
 Input-independent rules with identical child values across examples retain

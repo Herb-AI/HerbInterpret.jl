@@ -86,3 +86,33 @@ end
             [nothing, 50, nothing])
     end
 end
+
+@testset "Typed output storage" begin
+    output = HerbInterpret.make_output_interpreter(OutputTestDSL.g;
+        target_module=OutputTestDSL)
+    inputs = [Dict{Symbol,Any}(:_arg_1=>x) for x in (2, -1, 4)]
+    examples = [IOExample(input, nothing) for input in inputs]
+    ints = output(1, Vector[], inputs)
+    @test ints isa Vector{Int}
+    @test output(3, [ints, [1, 2, 3]], examples) isa Vector{Int}
+    maybe = output(4, [ints], inputs)
+    @test maybe isa Vector{Union{Nothing,Int}}
+    @test isequal(maybe, [2, nothing, 4])
+    @test output(3, Vector[maybe, [1, 2, 3]], inputs) isa Vector{Union{Nothing,Int}}
+    @test output(3, Vector[fill(nothing, 3), [1, 2, 3]], inputs) isa Vector{Nothing}
+    @test output(2, Vector[], inputs) isa Vector{Int}
+    @test output(1, Vector[], empty(inputs)) == []
+
+    heterogeneous = [Dict{Symbol,Any}(:_arg_1=>x) for x in (1, "two", nothing)]
+    @test isequal(output(1, Vector[], heterogeneous), [1, "two", nothing])
+    # Widening must preserve values rather than convert Int to Float64.
+    mixed_numbers = [Dict{Symbol,Any}(:_arg_1=>x) for x in (1, 2.5, 3)]
+    mixed = output(1, Vector[], mixed_numbers)
+    @test mixed[1] isa Int
+    @test mixed[2] isa Float64
+    arrays = [Dict{Symbol,Any}(:_arg_1=>x) for x in ([1], [2, 3], [4])]
+    @test output(1, Vector[], arrays) isa Vector{Vector{Int}}
+    fs = output(6, Vector[[1, 2, 3]], examples)
+    @test isconcretetype(eltype(fs))
+    @test [f(10) for f in fs] == [11, 12, 13]
+end
