@@ -312,7 +312,7 @@ function make_output_interpreter(grammar::AbstractGrammar;
     # Add error for non-existent indices
     cascade = Expr(:block, branches..., :(error("No matching rule index: ", r)))
 
-    ex = :(function $(fname)(prog, input)
+    ex = :(function $(fname)(rule, children_outputs, input)
         r = rule
         c = children_outputs
         any(isnothing, c) && return nothing
