@@ -12,6 +12,10 @@ _is_input_tag(tag, input_set) =
 
 _contains_input_tag(rule, input_set) = _is_input_tag(rule, input_set) || (rule isa Expr && any(arg -> _contains_input_tag(arg, input_set), rule.args))
 
+# DSL operators can opt into a batch evaluator that takes inputs followed by
+# their child-output vectors and handles invalid children per row.
+_output_batch_evaluator(::Any) = nothing
+
 """
     _collect_lambda_args(lhs)
 
@@ -134,6 +138,14 @@ function build_match_cases(
                 all(a -> (a isa Symbol) && (a in nonterminals), args)
 
             if pure
+                if batch_output && isdefined(target_module, op) && isconst(target_module, op)
+                    evaluate_batch = _output_batch_evaluator(getfield(target_module, op))
+                    if evaluate_batch !== nothing
+                        child_args = [:(c[$i]) for i in 1:length(args)]
+                        push!(branches, :(r == $ind && return $evaluate_batch(inputs, $(child_args...))))
+                        continue
+                    end
+                end
                 nargs = length(args)
                 child_vals = [recur(i) for i in 1:nargs]
                 rhs_code = Expr(:call, GlobalRef(target_module, op), child_vals...)
